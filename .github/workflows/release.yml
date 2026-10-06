@@ -1,0 +1,50 @@
+# Release pipeline for leptris-rs (modeled on parsanol-rs).
+#
+# On every push to main, release-plz:
+#   1. opens/updates a release PR with version bumps + changelog
+#      (conventional commits), and
+#   2. when that release PR merges, publishes to crates.io.
+#
+# Publishing uses crates.io TRUSTED PUBLISHING: the workflow's OIDC
+# token is exchanged for a registry token by crates-io-auth-action.
+# The crate must exist on crates.io first (manual first publish),
+# and each crate's Trusted Publisher must be registered:
+#   repo: leptris/leptris-rs, workflow: release.yml
+#
+# GITHUB_TOKEN must be a PAT (LEPTRIS_CI_PAT_TOKEN) so the release
+# PR itself triggers CI — the default token does not recurse.
+
+name: Release
+
+permissions:
+  pull-requests: write
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release-plz:
+    name: Release-plz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Exchange OIDC token for crates.io token
+        if: github.ref == 'refs/heads/main'
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Run release-plz
+        uses: MarcoIeni/release-plz-action@v0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.LEPTRIS_CI_PAT_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
