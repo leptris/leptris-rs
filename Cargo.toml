@@ -1,0 +1,19 @@
+[workspace]
+members = ["descriptor"]
+
+[package]
+name = "leptris"
+version = "1.4.1"
+edition = "2021"
+description = "Rust bindings for libleptris — fast XML 1.0 parsing, XPath 1.0, SAX"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/leptris/leptris"
+homepage = "https://www.leptris.org"
+links = "leptris"
+build = "build.rs"
+
+[dependencies]
+
+[dev-dependencies]
+leptris-descriptor = { path = "descriptor", features = ["link"] }
