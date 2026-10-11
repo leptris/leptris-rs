@@ -12,5 +12,8 @@ homepage = "https://www.leptris.org"
 # Enable on exactly one binding crate in the dependency graph —
 # the declarations carry no symbols of their own.
 link = []
+# The safe builder + walk layer (owns CStrings, drops results):
+# needs alloc/String.
+std = ["link"]
 
 [dependencies]
