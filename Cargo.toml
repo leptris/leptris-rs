@@ -14,6 +14,21 @@ links = "leptris"
 build = "build.rs"
 
 [dependencies]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+
+[features]
+default = []
+# #1900: compile the engine INTO the crate for wasm32-unknown-unknown
+# (the shim provides the freestanding libc). Requires LEPTRIS_SRC_PATH
+# pointing at an engine source tree (CI fetches the pinned tarball).
+wasm = []
+
+[build-dependencies]
+cc = "1"
 
 [dev-dependencies]
 leptris-descriptor = { path = "descriptor", features = ["link", "std"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

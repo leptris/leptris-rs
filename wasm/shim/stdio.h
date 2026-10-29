@@ -1,5 +1,6 @@
 #ifndef WASM_SHIM_STDIO_H
 #define WASM_SHIM_STDIO_H
+#include <stdint.h>
 #include <stdarg.h>
 #include <stddef.h>
 typedef struct _FILE FILE;

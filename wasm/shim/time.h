@@ -1,5 +1,6 @@
 #ifndef WASM_SHIM_TIME_H
 #define WASM_SHIM_TIME_H
+#include <stdint.h>
 typedef long long time_t;
 typedef long long clock_t;
 #define CLOCKS_PER_SEC 1000000
