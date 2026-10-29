@@ -1,5 +1,6 @@
 #ifndef WASM_SHIM_STDLIB_H
 #define WASM_SHIM_STDLIB_H
+#include <stdint.h>
 #include <stddef.h>
 #define EXIT_SUCCESS 0
 #define EXIT_FAILURE 1

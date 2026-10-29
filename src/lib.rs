@@ -18,6 +18,11 @@
 
 mod ffi;
 
+// #1900: the wasm-bindgen face (wasm32 + `wasm` feature only —
+// native targets keep the dynamic-link Document API).
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+pub mod wasmface;
+
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::marker::PhantomData;

@@ -1,5 +1,6 @@
 #ifndef WASM_SHIM_CTYPE_H
 #define WASM_SHIM_CTYPE_H
+#include <stdint.h>
 int isalnum(int);
 int isalpha(int);
 int iscntrl(int);
