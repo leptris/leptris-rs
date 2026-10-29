@@ -19,6 +19,12 @@ name: Release
 permissions:
   pull-requests: write
   contents: write
+  # crates.io trusted publishing: rust-lang/crates-io-auth-action@v1
+  # exchanges the job's OIDC token for a registry token — without
+  # id-token: write every release run died at the exchange step
+  # (found 2026-10-29: all runs since the workflow landed failed
+  # there, which is why crates.io sat at 1.4.1).
+  id-token: write
 
 on:
   push:
