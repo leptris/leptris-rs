@@ -1,0 +1,92 @@
+# leptris#1900 slice 3: attach the wasm bundle to GitHub releases.
+#
+# Fires on any published release (release-plz cuts them). Builds the
+# wasm32-unknown-unknown bundle (engine compiled in via the wasm
+# feature + wasm/shim freestanding libc), packages it as
+# leptris-wasm-<version>.tgz, uploads it to the release, and records
+# the size budget as a release comment.
+#
+# Engine source: the leptris/leptris main tree at the workflow run
+# (the same contract the ci.yml wasm lanes use); the engine commit is
+# recorded in the artifact's BUILD_INFO and the size comment.
+
+name: Wasm artifacts
+
+permissions:
+  contents: write
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build + attach wasm bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Checkout engine repository
+        uses: actions/checkout@v4
+        with:
+          repository: leptris/leptris
+          ref: main
+          path: engine
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: jetli/wasm-pack-action@v0.4.0
+        with:
+          version: latest
+
+      - name: Build the wasm bundle
+        shell: bash
+        run: |
+          LEPTRIS_SRC_PATH="$PWD/engine" \
+            wasm-pack build --target web --out-dir pkg -- --features wasm
+          ENGINE_SHA=$(git -C engine rev-parse --short HEAD)
+          WASM_BYTES=$(wc -c < pkg/leptris_bg.wasm)
+          JS_BYTES=$(wc -c < pkg/leptris.js)
+          {
+            echo "engine commit: ${ENGINE_SHA}"
+            echo "leptris_bg.wasm: ${WASM_BYTES} bytes"
+            echo "leptris.js: ${JS_BYTES} bytes"
+            echo "target: wasm32-unknown-unknown (web + node)"
+          } > pkg/BUILD_INFO.txt
+          echo "ENGINE_SHA=${ENGINE_SHA}" >> "$GITHUB_ENV"
+          echo "WASM_BYTES=${WASM_BYTES}" >> "$GITHUB_ENV"
+          echo "JS_BYTES=${JS_BYTES}" >> "$GITHUB_ENV"
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${VERSION#leptris-v}"
+          tar -czf "leptris-wasm-${VERSION}.tgz" -C pkg .
+          echo "ARTIFACT=leptris-wasm-${VERSION}.tgz" >> "$GITHUB_ENV"
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" "$ARTIFACT" --clobber
+
+      - name: Record the size budget
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s\n' \
+            "Wasm bundle attached: \`$ARTIFACT\`" \
+            "" \
+            "| artifact | bytes |" \
+            "|---|---|" \
+            "| leptris_bg.wasm | $WASM_BYTES |" \
+            "| leptris.js (glue) | $JS_BYTES |" \
+            "" \
+            "Engine: leptris/leptris@$ENGINE_SHA (compiled in via the wasm feature; wasm/shim freestanding libc). Target wasm32-unknown-unknown — loads in browsers and Node (ES module, wasm-bindgen web target)." \
+            > body.md
+          gh release comment "$GITHUB_REF_NAME" --body-file body.md
