@@ -23,22 +23,47 @@ mod ffi;
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 pub mod wasmface;
 
-// #1900: the C shim's malloc bump-allocates inside THIS leaked span —
-// rustc's dlmalloc owns linear-memory growth and a second growing
-// allocator (or extern __rust_alloc refs, which never pull std's
-// archive member from C) collides or fails to link. Fixed 16 MB C
-// heap; malloc returns NULL on exhaustion and the engine surfaces it.
+// #1900: the C shim's malloc/free/realloc route through THESE
+// wrappers over std::alloc. Two growing allocators in one module
+// (rustc's dlmalloc + any C-side bump) corrupt each other — both
+// start at __heap_base — so the C side must share the rust allocator.
+// Crate-defined wrappers (not direct __rust_alloc externs): extern
+// references from C objects never pull std's allocator archive
+// member, but these functions are Rust code, so std::alloc links.
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 #[no_mangle]
-pub extern "C" fn leptris_wasm_heap_span(len: *mut usize) -> *mut u8 {
-    const HEAP_BYTES: usize = 16 * 1024 * 1024;
-    let mut v = Vec::<u8>::with_capacity(HEAP_BYTES);
-    let p = v.as_mut_ptr();
-    if !len.is_null() {
-        unsafe { *len = HEAP_BYTES };
+pub extern "C" fn leptris_rust_alloc(size: usize, align: usize) -> *mut u8 {
+    unsafe {
+        std::alloc::alloc(std::alloc::Layout::from_size_align(size, align).unwrap_unchecked())
     }
-    std::mem::forget(v);
-    p
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+#[no_mangle]
+pub extern "C" fn leptris_rust_dealloc(ptr: *mut u8, size: usize, align: usize) {
+    unsafe {
+        std::alloc::dealloc(
+            ptr,
+            std::alloc::Layout::from_size_align(size, align).unwrap_unchecked(),
+        )
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+#[no_mangle]
+pub extern "C" fn leptris_rust_realloc(
+    ptr: *mut u8,
+    old_size: usize,
+    align: usize,
+    new_size: usize,
+) -> *mut u8 {
+    unsafe {
+        std::alloc::realloc(
+            ptr,
+            std::alloc::Layout::from_size_align(old_size, align).unwrap_unchecked(),
+            new_size,
+        )
+    }
 }
 
 use std::ffi::{CStr, CString};

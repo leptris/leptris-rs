@@ -26,96 +26,35 @@
 /* ------------------------------------------------------------------ */
 /* allocator                                                           */
 
-#define ALIGN 16u
+/* C allocation routes through the crate's leptris_rust_alloc/dealloc/
+ * realloc wrappers over std::alloc (see src/lib.rs) — one allocator
+ * for the whole module. The block header carries the payload size the
+ * dealloc/realloc wrappers require; NULL propagates as OOM. */
+extern void* leptris_rust_alloc(size_t size, size_t align);
+extern void leptris_rust_dealloc(void* ptr, size_t size, size_t align);
+extern void* leptris_rust_realloc(void* ptr, size_t old_size,
+                                  size_t align, size_t new_size);
 
-typedef struct block {
-    size_t size;      /* payload size */
-    size_t used;      /* 0 = free, 1 = allocated */
-    struct block* next;
-    struct block* prev;
+#define SHIM_ALIGN 16u
+
+typedef struct {
+    size_t size; /* payload bytes (aligned) */
 } block_t;
-
-static block_t* g_heap_head = NULL;
-
-/* wasm-ld reserves [-z stack-size] bytes of stack BELOW __heap_base;
- * bumping from the current memory top would hand out stack pages as
- * heap and corrupt every call frame. Bump from __heap_base. */
-extern unsigned char __heap_base[];
-static uintptr_t g_bump = 0;
-
-static void* shim_alloc_pages(size_t size) {
-    if (!g_bump) {
-        g_bump = ((uintptr_t)__heap_base + ALIGN - 1u) &
-                 ~(uintptr_t)(ALIGN - 1u);
-    }
-    uintptr_t cur = g_bump;
-    uintptr_t need_end = (cur + size + 65535u) & ~65535u;
-    uintptr_t mem_end =
-        (uintptr_t)__builtin_wasm_memory_size(0) * 65536u;
-    if (need_end > mem_end) {
-        size_t pages = ((need_end - mem_end) + 65535u) / 65536u;
-        if (__builtin_wasm_memory_grow(0, pages) == (uintptr_t)-1)
-            return NULL;
-    }
-    g_bump = need_end;
-    return (void*)cur;
-}
 
 void* malloc(size_t size) {
     if (size == 0) size = 1;
-    size = (size + ALIGN - 1u) & ~(size_t)(ALIGN - 1u);
-    for (block_t* b = g_heap_head; b; b = b->next) {
-        if (!b->used && b->size >= size) {
-            /* split when the remainder holds a block */
-            if (b->size >= size + sizeof(block_t) + ALIGN) {
-                block_t* rest =
-                    (block_t*)((char*)(b + 1) + size);
-                rest->size = b->size - size - sizeof(block_t);
-                rest->used = 0;
-                rest->next = b->next;
-                rest->prev = b;
-                if (rest->next) rest->next->prev = rest;
-                b->next = rest;
-                b->size = size;
-            }
-            b->used = 1;
-            return (void*)(b + 1);
-        }
-    }
-    void* mem = shim_alloc_pages(size + sizeof(block_t));
-    if (!mem) return NULL;
-    block_t* b = (block_t*)mem;
-    b->size = size;
-    b->used = 1;
-    b->prev = NULL;
-    b->next = g_heap_head;
-    if (g_heap_head) g_heap_head->prev = b;
-    g_heap_head = b;
+    size_t payload = (size + SHIM_ALIGN - 1u) & ~(size_t)(SHIM_ALIGN - 1u);
+    block_t* b = (block_t*)leptris_rust_alloc(
+        payload + sizeof(block_t), SHIM_ALIGN);
+    if (!b) return NULL;
+    b->size = payload;
     return (void*)(b + 1);
 }
 
 void free(void* p) {
     if (!p) return;
     block_t* b = (block_t*)p - 1;
-    b->used = 0;
-    /* coalesce only PHYSICALLY adjacent blocks — the chain is not
-     * address-ordered (grown pages prepend), so chain neighbors may
-     * live anywhere in linear memory. */
-    if (b->next && !b->next->used &&
-        (char*)b + sizeof(block_t) + b->size == (char*)b->next) {
-        block_t* n = b->next;
-        b->size += sizeof(block_t) + n->size;
-        b->next = n->next;
-        if (n->next) n->next->prev = b;
-    }
-    if (b->prev && !b->prev->used &&
-        (char*)b->prev + sizeof(block_t) + b->prev->size ==
-            (char*)b) {
-        block_t* pv = b->prev;
-        pv->size += sizeof(block_t) + b->size;
-        pv->next = b->next;
-        if (b->next) b->next->prev = pv;
-    }
+    leptris_rust_dealloc(b, b->size + sizeof(block_t), SHIM_ALIGN);
 }
 
 void* calloc(size_t n, size_t sz) {
@@ -128,12 +67,13 @@ void* calloc(size_t n, size_t sz) {
 void* realloc(void* p, size_t size) {
     if (!p) return malloc(size);
     block_t* b = (block_t*)p - 1;
-    if (b->size >= size) return p;
-    void* np = malloc(size);
+    size_t payload = (size + SHIM_ALIGN - 1u) & ~(size_t)(SHIM_ALIGN - 1u);
+    void* np = leptris_rust_realloc(b, b->size + sizeof(block_t),
+                                    SHIM_ALIGN, payload + sizeof(block_t));
     if (!np) return NULL;
-    memcpy(np, p, b->size);
-    free(p);
-    return np;
+    b = (block_t*)np;
+    b->size = payload;
+    return (void*)(b + 1);
 }
 
 void abort(void) { __builtin_unreachable(); }
