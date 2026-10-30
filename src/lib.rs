@@ -23,6 +23,24 @@ mod ffi;
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
 pub mod wasmface;
 
+// #1900: the C shim's malloc bump-allocates inside THIS leaked span —
+// rustc's dlmalloc owns linear-memory growth and a second growing
+// allocator (or extern __rust_alloc refs, which never pull std's
+// archive member from C) collides or fails to link. Fixed 16 MB C
+// heap; malloc returns NULL on exhaustion and the engine surfaces it.
+#[cfg(all(target_arch = "wasm32", feature = "wasm"))]
+#[no_mangle]
+pub extern "C" fn leptris_wasm_heap_span(len: *mut usize) -> *mut u8 {
+    const HEAP_BYTES: usize = 16 * 1024 * 1024;
+    let mut v = Vec::<u8>::with_capacity(HEAP_BYTES);
+    let p = v.as_mut_ptr();
+    if !len.is_null() {
+        unsafe { *len = HEAP_BYTES };
+    }
+    std::mem::forget(v);
+    p
+}
+
 use std::ffi::{CStr, CString};
 use std::fmt;
 use std::marker::PhantomData;
