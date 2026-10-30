@@ -79,14 +79,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # gh release comment does not exist on older gh builds —
+          # append to the release body via the API instead.
+          RID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" \
+            --jq '.id')
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RID" \
+            --jq '.body' > body.md
           printf '%s\n' \
-            "Wasm bundle attached: \`$ARTIFACT\`" \
+            "" \
+            "## Wasm bundle (leptris#1900)" \
+            "" \
+            "Attached: \`$ARTIFACT\`" \
             "" \
             "| artifact | bytes |" \
             "|---|---|" \
             "| leptris_bg.wasm | $WASM_BYTES |" \
             "| leptris.js (glue) | $JS_BYTES |" \
             "" \
-            "Engine: leptris/leptris@$ENGINE_SHA (compiled in via the wasm feature; wasm/shim freestanding libc). Target wasm32-unknown-unknown — loads in browsers and Node (ES module, wasm-bindgen web target)." \
-            > body.md
-          gh release comment "$GITHUB_REF_NAME" --body-file body.md
+            "Engine: leptris/leptris@$ENGINE_SHA (compiled in via the wasm feature; wasm/shim freestanding libc). Target wasm32-unknown-unknown — loads in browsers and Node (wasm-bindgen web target). See BUILD_INFO.txt in the bundle." \
+            >> body.md
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RID" \
+            -F body=@body.md --jq '.id'
