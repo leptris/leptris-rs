@@ -50,6 +50,10 @@ pub struct LeptrisSAXParser {
     _private: [u8; 0],
 }
 #[repr(C)]
+pub struct LeptrisXsdSchema {
+    _private: [u8; 0],
+}
+#[repr(C)]
 pub struct LeptrisSerializeOptions {
     _private: [u8; 0],
 }
@@ -142,6 +146,18 @@ extern "C" {
     pub fn leptris_xpath_result_string(result: *mut LeptrisXPathResult) -> *mut c_char;
     pub fn leptris_xpath_result_free(result: *mut LeptrisXPathResult);
     pub fn leptris_free_string(s: *mut c_char);
+
+    /* XSD (leptris#1900 wasm face; the full mirror lives in the
+     * hand-maintained surface above once native wrappers adopt it). */
+    pub fn leptris_xsd_compile(
+        xsd: *const c_char,
+        len: usize,
+        status: *mut LeptrisStatus,
+    ) -> *mut LeptrisXsdSchema;
+    pub fn leptris_xsd_validate(schema: *mut LeptrisXsdSchema, doc: *mut LeptrisDocument) -> c_int;
+    pub fn leptris_xsd_error_count(schema: *mut LeptrisXsdSchema) -> usize;
+    pub fn leptris_xsd_error_at(schema: *mut LeptrisXsdSchema, i: usize) -> *const c_char;
+    pub fn leptris_xsd_free(schema: *mut LeptrisXsdSchema);
 
     /* Errors */
     pub fn leptris_error_message(status: LeptrisStatus) -> *const c_char;

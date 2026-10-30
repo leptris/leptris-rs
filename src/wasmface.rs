@@ -17,6 +17,69 @@ pub struct WasmDocument {
     raw: *mut ffi::LeptrisDocument,
 }
 
+/// A compiled XSD schema. Owns its engine-side memory; validate
+/// errors enumerate through `last_error_count`/`last_error` on the
+/// document's schema handle — surfaced here as the Vec from
+/// [`validate`].
+#[wasm_bindgen]
+pub struct WasmSchema {
+    raw: *mut ffi::LeptrisXsdSchema,
+}
+
+impl Drop for WasmSchema {
+    fn drop(&mut self) {
+        if !self.raw.is_null() {
+            unsafe { ffi::leptris_xsd_free(self.raw) };
+        }
+    }
+}
+
+/// Compile an XSD schema (tier-1 subset; schema-set via one text with
+/// relative xsd:import is NOT supported in the wasm face yet — pass
+/// the head document).
+#[wasm_bindgen]
+pub fn compile_xsd(xsd: &str) -> Result<WasmSchema, JsError> {
+    let cxsd = CString::new(xsd).map_err(|_| JsError::new("xsd contains a NUL byte"))?;
+    let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
+    let raw = unsafe { ffi::leptris_xsd_compile(cxsd.as_ptr(), xsd.len(), &mut st) };
+    if raw.is_null() {
+        return Err(JsError::new(&format!(
+            "leptris xsd compile failed (status {st})"
+        )));
+    }
+    Ok(WasmSchema { raw })
+}
+
+impl WasmSchema {
+    /// Validate a document: Ok(true) valid, Ok(false) invalid (fetch
+    /// the rows via `last_errors`), Err on bad args.
+    pub fn validate_doc(&self, doc: &WasmDocument) -> Result<bool, JsError> {
+        let r = unsafe { ffi::leptris_xsd_validate(self.raw, doc.raw) };
+        if r < 0 {
+            return Err(JsError::new("leptris xsd validation failed"));
+        }
+        Ok(r == 1)
+    }
+
+    /// The error rows of the most recent validate run (schema-owned;
+    /// replaced by the next run).
+    pub fn last_errors(&self) -> Vec<String> {
+        unsafe {
+            let n = ffi::leptris_xsd_error_count(self.raw);
+            (0..n)
+                .filter_map(|i| {
+                    let p = ffi::leptris_xsd_error_at(self.raw, i);
+                    if p.is_null() {
+                        None
+                    } else {
+                        Some(CStr::from_ptr(p).to_string_lossy().into_owned())
+                    }
+                })
+                .collect()
+        }
+    }
+}
+
 impl Drop for WasmDocument {
     fn drop(&mut self) {
         if !self.raw.is_null() {
