@@ -52,5 +52,5 @@ jobs:
       - name: Run release-plz
         uses: MarcoIeni/release-plz-action@v0.5
         env:
-          GITHUB_TOKEN: ${{ secrets.LEPTRIS_CI_PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.LEPTRIS_CI_PAT_TOKEN || github.token }}
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
