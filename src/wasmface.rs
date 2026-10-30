@@ -30,28 +30,21 @@ impl WasmDocument {
     /// Parse an XML string. Errors carry the engine's LeptrisStatus.
     #[wasm_bindgen(constructor)]
     pub fn parse(xml: &str) -> Result<WasmDocument, JsError> {
-        let cxml = CString::new(xml)
-            .map_err(|_| JsError::new("xml contains a NUL byte"))?;
+        let cxml = CString::new(xml).map_err(|_| JsError::new("xml contains a NUL byte"))?;
         let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
-        let raw = unsafe {
-            ffi::leptris_parse_string(cxml.as_ptr(), xml.len(), &mut st)
-        };
+        let raw = unsafe { ffi::leptris_parse_string(cxml.as_ptr(), xml.len(), &mut st) };
         if raw.is_null() {
-            return Err(JsError::new(&format!(
-                "leptris parse failed (status {st})"
-            )));
+            return Err(JsError::new(&format!("leptris parse failed (status {st})")));
         }
         Ok(WasmDocument { raw })
     }
 
     /// Evaluate an XPath expression; the string-value of the result.
     pub fn xpath(&self, expression: &str) -> Result<String, JsError> {
-        let cexpr = CString::new(expression)
-            .map_err(|_| JsError::new("xpath contains a NUL byte"))?;
-        let result = unsafe {
-            ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(),
-                                    cexpr.as_ptr())
-        };
+        let cexpr =
+            CString::new(expression).map_err(|_| JsError::new("xpath contains a NUL byte"))?;
+        let result =
+            unsafe { ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(), cexpr.as_ptr()) };
         if result.is_null() {
             return Err(JsError::new("leptris xpath evaluation failed"));
         }
@@ -62,12 +55,10 @@ impl WasmDocument {
 
     /// Count nodes matching the expression.
     pub fn xpath_count(&self, expression: &str) -> Result<usize, JsError> {
-        let cexpr = CString::new(expression)
-            .map_err(|_| JsError::new("xpath contains a NUL byte"))?;
-        let result = unsafe {
-            ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(),
-                                    cexpr.as_ptr())
-        };
+        let cexpr =
+            CString::new(expression).map_err(|_| JsError::new("xpath contains a NUL byte"))?;
+        let result =
+            unsafe { ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(), cexpr.as_ptr()) };
         if result.is_null() {
             return Err(JsError::new("leptris xpath evaluation failed"));
         }
@@ -78,8 +69,13 @@ impl WasmDocument {
 
     /// Serialize the document back to XML.
     pub fn to_xml(&self) -> Result<String, JsError> {
-        unsafe { take_string(ffi::leptris_document_serialize(self.raw, std::ptr::null_mut())) }
-            .map_err(|_| JsError::new("serialization failed"))
+        unsafe {
+            take_string(ffi::leptris_document_serialize(
+                self.raw,
+                std::ptr::null_mut(),
+            ))
+        }
+        .map_err(|_| JsError::new("serialization failed"))
     }
 
     /// Root element name.
@@ -89,9 +85,11 @@ impl WasmDocument {
             return None;
         }
         unsafe {
-            Some(CStr::from_ptr(ffi::leptris_element_name(root))
-                .to_string_lossy()
-                .into_owned())
+            Some(
+                CStr::from_ptr(ffi::leptris_element_name(root))
+                    .to_string_lossy()
+                    .into_owned(),
+            )
         }
     }
 }
@@ -102,7 +100,9 @@ unsafe fn take_string(p: *mut c_char) -> Result<String, ()> {
     if p.is_null() {
         return Err(());
     }
-    let s = CStr::from_ptr(p as *const c_char).to_string_lossy().into_owned();
+    let s = CStr::from_ptr(p as *const c_char)
+        .to_string_lossy()
+        .into_owned();
     // The mirror's free face (same name as the header's).
     extern "C" {
         fn leptris_free_string(str: *mut c_char);
