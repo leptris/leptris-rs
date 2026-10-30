@@ -4,6 +4,12 @@
 [workspace]
 # Detect all workspace members automatically.
 git_release_enable = true
+# crates.io publish is handled by release.yml's dedicated step with
+# --no-verify: cargo publish's tarball verification links the crate's
+# cdylib against the SYSTEM libleptris, which no clean CI runner has
+# (the crate binds a C library; its tests run in ci.yml against a
+# built engine).
+publish = false
 dependencies_update = true
 
 [changelog]
