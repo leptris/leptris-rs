@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Node-handle walk/write faces + full XPath result shape ([#15](https://github.com/leptris/leptris-rs/pull/15)) by @[object]
+
+### Other
+
+- Cargo fmt by @[object]
+- Record the wasm size budget in the release body via the API by @[object]
+
+### Added
+
 - Ns_prefix row fields for plan-path serialization by @[object]
 - PLAN_KIND_WILDCARD = 7 by @[object]
 - Bootstrap leptris-rs — standalone Rust binding repository by @[object]
