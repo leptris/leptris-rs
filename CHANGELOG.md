@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Other
+
+- The XPath result kind enum is 0-based (fixes #19) by @[object]
+- Export the XSD validate face (leptris-rs#15 item 4) by @[object]
+
 ### Added
 
 - Node-handle walk/write faces + full XPath result shape ([#15](https://github.com/leptris/leptris-rs/pull/15)) by @[object]
