@@ -329,7 +329,8 @@ pub struct WasmXPathResult {
 
 #[wasm_bindgen]
 impl WasmXPathResult {
-    /// 1 nodeset, 2 boolean, 3 number, 4 string (engine enum).
+    /// 0 nodeset, 1 boolean, 2 number, 3 string, 4 function item
+    /// (the engine's LeptrisXPathResultType — 0-based; #19).
     pub fn kind(&self) -> i32 {
         self.kind
     }
