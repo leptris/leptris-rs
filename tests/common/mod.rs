@@ -37,20 +37,15 @@ macro_rules! wasm_face_tests {
 
         #[wasm_bindgen_test]
         fn node_handles_walk_and_write() {
-            let doc = leptris::wasmface::WasmDocument::parse(
-                "<root><a x='1'>t1</a><b/></root>",
-            )
-            .unwrap();
+            let doc =
+                leptris::wasmface::WasmDocument::parse("<root><a x='1'>t1</a><b/></root>").unwrap();
             let root = doc.root().expect("root");
             assert_eq!(root.name().as_deref(), Some("root"));
             let kids = root.children();
             assert_eq!(kids.len(), 2, "a + b in document order");
             assert_eq!(kids[0].name().as_deref(), Some("a"));
             assert_eq!(kids[0].text().as_deref(), Some("t1"));
-            assert_eq!(
-                kids[0].kind(),
-                leptris::wasmface::WasmNodeKind::Element
-            );
+            assert_eq!(kids[0].kind(), leptris::wasmface::WasmNodeKind::Element);
 
             // write face: build a document from scratch and serialize
             let built = leptris::wasmface::WasmDocument::parse("<w/>").unwrap();

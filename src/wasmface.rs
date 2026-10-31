@@ -206,18 +206,12 @@ impl WasmNode {
     /// Element name (element-kind nodes only).
     pub fn name(&self) -> Option<String> {
         unsafe {
-            let p = ffi::leptris_element_name(
-                self.node as *mut ffi::LeptrisElement,
-            );
+            let p = ffi::leptris_element_name(self.node as *mut ffi::LeptrisElement);
             if p.is_null() {
                 return None;
             }
             /* document-owned: BORROW, never free */
-            Some(
-                CStr::from_ptr(p)
-                    .to_string_lossy()
-                    .into_owned(),
-            )
+            Some(CStr::from_ptr(p).to_string_lossy().into_owned())
         }
     }
 
@@ -226,12 +220,8 @@ impl WasmNode {
     pub fn text(&self) -> Option<String> {
         unsafe {
             let p = match self.kind() {
-                WasmNodeKind::Text => {
-                    ffi::leptris_text_node_get_content(self.node)
-                }
-                _ => ffi::leptris_element_text(
-                    self.node as *mut ffi::LeptrisElement,
-                ),
+                WasmNodeKind::Text => ffi::leptris_text_node_get_content(self.node),
+                _ => ffi::leptris_element_text(self.node as *mut ffi::LeptrisElement),
             };
             if p.is_null() {
                 return None;
@@ -262,22 +252,24 @@ impl WasmNode {
                 return Vec::new();
             }
             let mut nodes: Vec<ffi::LeptrisNodeRef> = vec![std::ptr::null_mut(); n];
-            let got =
-                ffi::leptris_node_children(self.node, nodes.as_mut_ptr(), n);
+            let got = ffi::leptris_node_children(self.node, nodes.as_mut_ptr(), n);
             nodes.truncate(got);
             nodes
                 .into_iter()
-                .map(|node| WasmNode { doc: self.doc, node })
+                .map(|node| WasmNode {
+                    doc: self.doc,
+                    node,
+                })
                 .collect()
         }
     }
 
     /// Set an attribute (element-kind nodes).
     pub fn set_attribute(&self, name: &str, value: &str) -> Result<(), JsError> {
-        let cname = CString::new(name)
-            .map_err(|_| JsError::new("attribute name contains a NUL byte"))?;
-        let cvalue = CString::new(value)
-            .map_err(|_| JsError::new("attribute value contains a NUL byte"))?;
+        let cname =
+            CString::new(name).map_err(|_| JsError::new("attribute name contains a NUL byte"))?;
+        let cvalue =
+            CString::new(value).map_err(|_| JsError::new("attribute value contains a NUL byte"))?;
         let st = unsafe {
             ffi::leptris_element_set_attribute(
                 self.node as *mut ffi::LeptrisElement,
@@ -363,25 +355,22 @@ impl WasmXPathResult {
 impl WasmDocument {
     /// Evaluate an XPath with the FULL result shape.
     pub fn xpath_full(&self, expression: &str) -> Result<WasmXPathResult, JsError> {
-        let cexpr = CString::new(expression)
-            .map_err(|_| JsError::new("xpath contains a NUL byte"))?;
-        let result = unsafe {
-            ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(), cexpr.as_ptr())
-        };
+        let cexpr =
+            CString::new(expression).map_err(|_| JsError::new("xpath contains a NUL byte"))?;
+        let result =
+            unsafe { ffi::leptris_xpath_eval(self.raw, std::ptr::null_mut(), cexpr.as_ptr()) };
         if result.is_null() {
             return Err(JsError::new("leptris xpath evaluation failed"));
         }
         unsafe {
             let kind = ffi::leptris_xpath_result_type(result);
-            let sv = take_string(ffi::leptris_xpath_result_string(result))
-                .unwrap_or_default();
+            let sv = take_string(ffi::leptris_xpath_result_string(result)).unwrap_or_default();
             let boolean = ffi::leptris_xpath_result_boolean(result) != 0;
             let number = ffi::leptris_xpath_result_number(result);
             let mut nodes = Vec::new();
             if kind == ffi::LEPTRIS_XPATH_NODESET {
                 let n = ffi::leptris_xpath_result_count(result);
-                let mut handles: Vec<ffi::LeptrisNodeRef> =
-                    vec![std::ptr::null_mut(); n];
+                let mut handles: Vec<ffi::LeptrisNodeRef> = vec![std::ptr::null_mut(); n];
                 let got = ffi::leptris_xpath_result_get_nodes_ex(
                     result,
                     handles.as_mut_ptr(),
@@ -391,7 +380,10 @@ impl WasmDocument {
                 handles.truncate(got);
                 nodes = handles
                     .into_iter()
-                    .map(|node| WasmNode { doc: self.raw, node })
+                    .map(|node| WasmNode {
+                        doc: self.raw,
+                        node,
+                    })
                     .collect();
             }
             ffi::leptris_xpath_result_free(result);
@@ -419,8 +411,8 @@ impl WasmDocument {
 
     /// Create a detached element owned by this document.
     pub fn create_element(&self, name: &str) -> Result<WasmNode, JsError> {
-        let cname = CString::new(name)
-            .map_err(|_| JsError::new("element name contains a NUL byte"))?;
+        let cname =
+            CString::new(name).map_err(|_| JsError::new("element name contains a NUL byte"))?;
         let elem = unsafe {
             ffi::leptris_element_new_with_attributes(
                 self.raw,
@@ -441,10 +433,8 @@ impl WasmDocument {
 
     /// Create a detached text node owned by this document.
     pub fn create_text(&self, text: &str) -> Result<WasmNode, JsError> {
-        let ctext = CString::new(text)
-            .map_err(|_| JsError::new("text contains a NUL byte"))?;
-        let node =
-            unsafe { ffi::leptris_text_node_create(self.raw, ctext.as_ptr()) };
+        let ctext = CString::new(text).map_err(|_| JsError::new("text contains a NUL byte"))?;
+        let node = unsafe { ffi::leptris_text_node_create(self.raw, ctext.as_ptr()) };
         if node.is_null() {
             return Err(JsError::new("leptris create_text failed"));
         }
@@ -456,8 +446,9 @@ impl WasmDocument {
 
     /// Set the document's root element (attaches a detached element).
     pub fn set_root(&self, root: WasmNode) -> Result<(), JsError> {
-        let st =
-            unsafe { ffi::leptris_document_set_root(self.raw, root.node as *mut ffi::LeptrisElement) };
+        let st = unsafe {
+            ffi::leptris_document_set_root(self.raw, root.node as *mut ffi::LeptrisElement)
+        };
         if st != ffi::LEPTRIS_OK {
             return Err(JsError::new("leptris set_root failed"));
         }
