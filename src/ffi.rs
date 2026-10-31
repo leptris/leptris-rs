@@ -230,9 +230,7 @@ extern "C" {
         out_nodes: *mut LeptrisNodeRef,
         max_count: usize,
     ) -> usize;
-    pub fn leptris_element_first_child_element(
-        elem: *mut LeptrisElement,
-    ) -> *mut LeptrisElement;
+    pub fn leptris_element_first_child_element(elem: *mut LeptrisElement) -> *mut LeptrisElement;
 }
 
 /* ---- xpath result shapes (#15 face 2) — get_nodes_ex is the one
@@ -244,9 +242,7 @@ extern "C" {
         out_kinds: *mut c_int,
         max_count: usize,
     ) -> usize;
-    pub fn leptris_xpath_result_boolean(
-        result: *mut LeptrisXPathResult,
-    ) -> c_int;
+    pub fn leptris_xpath_result_boolean(result: *mut LeptrisXPathResult) -> c_int;
 }
 
 /* ---- write face (#15 face 3) ---- */
@@ -272,8 +268,6 @@ extern "C" {
         child_addr: usize,
         installed_addr: *mut usize,
     ) -> c_int;
-    pub fn leptris_document_set_root(
-        doc: *mut LeptrisDocument,
-        elem: *mut LeptrisElement,
-    ) -> c_int;
+    pub fn leptris_document_set_root(doc: *mut LeptrisDocument, elem: *mut LeptrisElement)
+        -> c_int;
 }
