@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Other
 
+- Release v1.6.1 by @[object]
+- The XPath result kind enum is 0-based (fixes #19) by @[object]
+- Export the XSD validate face (leptris-rs#15 item 4) by @[object]
+
+### Other
+
 - The XPath result kind enum is 0-based (fixes #19) by @[object]
 - Export the XSD validate face (leptris-rs#15 item 4) by @[object]
 
