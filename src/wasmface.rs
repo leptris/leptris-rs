@@ -17,10 +17,10 @@ pub struct WasmDocument {
     raw: *mut ffi::LeptrisDocument,
 }
 
-/// A compiled XSD schema. Owns its engine-side memory; validate
-/// errors enumerate through `last_error_count`/`last_error` on the
-/// document's schema handle — surfaced here as the Vec from
-/// [`validate`].
+/// A compiled XSD schema. Owns its engine-side memory.
+/// [`WasmSchema::validate_doc`] answers validity;
+/// [`WasmSchema::last_errors`] returns the rows of the most recent
+/// run.
 #[wasm_bindgen]
 pub struct WasmSchema {
     raw: *mut ffi::LeptrisXsdSchema,
@@ -50,6 +50,7 @@ pub fn compile_xsd(xsd: &str) -> Result<WasmSchema, JsError> {
     Ok(WasmSchema { raw })
 }
 
+#[wasm_bindgen]
 impl WasmSchema {
     /// Validate a document: Ok(true) valid, Ok(false) invalid (fetch
     /// the rows via `last_errors`), Err on bad args.
