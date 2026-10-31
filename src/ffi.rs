@@ -97,6 +97,7 @@ extern "C" {
     /* Element */
     pub fn leptris_element_name(elem: *mut LeptrisElement) -> *const c_char;
     pub fn leptris_element_text(elem: *mut LeptrisElement) -> *const c_char;
+    pub fn leptris_text_node_get_content(node: LeptrisNodeRef) -> *mut c_char;
     pub fn leptris_element_child_count(elem: *mut LeptrisElement) -> usize;
     pub fn leptris_element_first_child(
         elem: *mut LeptrisElement,
@@ -217,4 +218,62 @@ pub struct LeptrisSAXHandler {
             column: c_int,
         ),
     >,
+}
+pub type LeptrisNodeRef = *mut LeptrisNode;
+
+/* ---- node reads (#15 face 1) — the mirror already carries
+ * element_text; node_get_type + the mixed-children face are new */
+extern "C" {
+    pub fn leptris_node_get_type(node: LeptrisNodeRef) -> c_int;
+    pub fn leptris_node_children(
+        parent: LeptrisNodeRef,
+        out_nodes: *mut LeptrisNodeRef,
+        max_count: usize,
+    ) -> usize;
+    pub fn leptris_element_first_child_element(
+        elem: *mut LeptrisElement,
+    ) -> *mut LeptrisElement;
+}
+
+/* ---- xpath result shapes (#15 face 2) — get_nodes_ex is the one
+ * the mirror lacked (node_kind/name/value/boolean/number exist) */
+extern "C" {
+    pub fn leptris_xpath_result_get_nodes_ex(
+        result: *mut LeptrisXPathResult,
+        out_nodes: *mut LeptrisNodeRef,
+        out_kinds: *mut c_int,
+        max_count: usize,
+    ) -> usize;
+    pub fn leptris_xpath_result_boolean(
+        result: *mut LeptrisXPathResult,
+    ) -> c_int;
+}
+
+/* ---- write face (#15 face 3) ---- */
+extern "C" {
+    pub fn leptris_element_new_with_attributes(
+        doc: *mut LeptrisDocument,
+        name: *const c_char,
+        attr_names: *const *const c_char,
+        attr_values: *const *const c_char,
+        attr_count: usize,
+    ) -> *mut LeptrisElement;
+    pub fn leptris_text_node_create(
+        doc: *mut LeptrisDocument,
+        content: *const c_char,
+    ) -> LeptrisNodeRef;
+    pub fn leptris_element_set_attribute(
+        elem: *mut LeptrisElement,
+        name: *const c_char,
+        value: *const c_char,
+    ) -> c_int;
+    pub fn leptris_element_add_child_addr_installed(
+        parent_addr: usize,
+        child_addr: usize,
+        installed_addr: *mut usize,
+    ) -> c_int;
+    pub fn leptris_document_set_root(
+        doc: *mut LeptrisDocument,
+        elem: *mut LeptrisElement,
+    ) -> c_int;
 }
