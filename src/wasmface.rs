@@ -161,10 +161,30 @@ pub fn compile_xsd_set(paths: Vec<String>) -> Result<WasmSchema, JsError> {
     let ptrs: Vec<*const std::os::raw::c_char> = cpaths.iter().map(|p| p.as_ptr()).collect();
     let mut st = ffi::LEPTRIS_OK;
     let raw = unsafe { ffi::leptris_xsd_compile_set(ptrs.as_ptr(), ptrs.len(), &mut st) };
+    finish_schema(raw, st, "leptris xsd compile_set")
+}
+
+/// The engine's XSD compile faces return an ERROR-CARRYING HANDLE on
+/// failure (non-NULL with status set) — the status is authoritative.
+/// Surface the engine's error text and drop the handle.
+fn finish_schema(
+    raw: *mut ffi::LeptrisXsdSchema,
+    st: ffi::LeptrisStatus,
+    what: &str,
+) -> Result<WasmSchema, JsError> {
+    if st != ffi::LEPTRIS_OK {
+        let mut msg = String::new();
+        if !raw.is_null() {
+            let p = unsafe { ffi::leptris_xsd_error(raw) };
+            if !p.is_null() {
+                msg = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
+            }
+            unsafe { ffi::leptris_xsd_free(raw) };
+        }
+        return Err(JsError::new(&format!("{what} failed (status {st}): {msg}")));
+    }
     if raw.is_null() {
-        return Err(JsError::new(&format!(
-            "leptris xsd compile_set failed (status {st})"
-        )));
+        return Err(JsError::new(&format!("{what} failed (status {st})")));
     }
     Ok(WasmSchema { raw })
 }
@@ -192,12 +212,7 @@ pub fn compile_xsd(xsd: &str) -> Result<WasmSchema, JsError> {
     let cxsd = CString::new(xsd).map_err(|_| JsError::new("xsd contains a NUL byte"))?;
     let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
     let raw = unsafe { ffi::leptris_xsd_compile(cxsd.as_ptr(), xsd.len(), &mut st) };
-    if raw.is_null() {
-        return Err(JsError::new(&format!(
-            "leptris xsd compile failed (status {st})"
-        )));
-    }
-    Ok(WasmSchema { raw })
+    finish_schema(raw, st, "leptris xsd compile")
 }
 
 #[wasm_bindgen]

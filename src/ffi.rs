@@ -167,6 +167,7 @@ extern "C" {
         status: *mut LeptrisStatus,
     ) -> *mut LeptrisXsdSchema;
     pub fn leptris_xsd_validate(schema: *mut LeptrisXsdSchema, doc: *mut LeptrisDocument) -> c_int;
+    pub fn leptris_xsd_error(schema: *mut LeptrisXsdSchema) -> *const c_char;
     pub fn leptris_xsd_error_count(schema: *mut LeptrisXsdSchema) -> usize;
     pub fn leptris_xsd_error_at(schema: *mut LeptrisXsdSchema, i: usize) -> *const c_char;
     pub fn leptris_xsd_free(schema: *mut LeptrisXsdSchema);
