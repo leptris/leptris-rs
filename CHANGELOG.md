@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tier-2 faces — namespaces, attribute snapshot, capabilities, schema-set VFS, HTML by @[object]
+
+### Fixed
+
+- Honor the error-carrying-handle contract on xsd compile faces by @[object]
+
+### Other
+
+- Cover the tier-2 faces in the node/browser suite by @[object]
+
 ### Other
 
 - The XPath result kind enum is 0-based (fixes #19) by @[object]
