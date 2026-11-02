@@ -89,5 +89,108 @@ macro_rules! wasm_face_tests {
             let rows = schema.last_errors();
             assert!(!rows.is_empty(), "error rows must enumerate");
         }
+
+        #[wasm_bindgen_test]
+        fn namespace_reads() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<root xmlns:ns=\"urn:n\"><ns:child>t</ns:child><plain/></root>",
+            )
+            .unwrap();
+            let root = doc.root().expect("root");
+            assert!(root.namespace_uri().is_none(), "no-ns root");
+            let kids = root.children();
+            assert_eq!(kids[0].namespace_uri().as_deref(), Some("urn:n"));
+            assert_eq!(kids[0].prefix().as_deref(), Some("ns"));
+            assert_eq!(kids[1].namespace_uri(), None);
+            assert_eq!(kids[1].prefix(), None);
+        }
+
+        #[wasm_bindgen_test]
+        fn attribute_pairs_lanes() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<root a=\"1\" ns:b=\"2\" xmlns:ns=\"urn:n\"/>",
+            )
+            .unwrap();
+            let pairs = doc.root().expect("root").attribute_pairs().expect("pairs");
+            assert_eq!(pairs.len(), 2);
+            assert_eq!(pairs[0].name(), "a");
+            assert_eq!(pairs[0].value(), "1");
+            assert_eq!(pairs[0].uri(), None, "no-namespace attr has no uri lane");
+            // engine-qualified name; prefix/uri lanes carry the split
+            assert_eq!(pairs[1].name(), "ns:b");
+            assert_eq!(pairs[1].prefix().as_deref(), Some("ns"));
+            assert_eq!(pairs[1].uri().as_deref(), Some("urn:n"));
+        }
+
+        #[wasm_bindgen_test]
+        fn capabilities_describe_engine() {
+            let caps = leptris::wasmface::engine_capabilities();
+            assert!(caps.caps() > 0.0, "engine advertises bits");
+            assert_eq!(caps.descriptor_version(), 1);
+            assert!(caps.serves(1.0), "bit 0 must be served by any engine");
+        }
+
+        #[wasm_bindgen_test]
+        fn parse_html_whatwg() {
+            let doc = leptris::wasmface::parse_html("<p>hello<br>world</p>").unwrap();
+            let xml = doc.to_xml().unwrap();
+            assert!(xml.to_lowercase().contains("hello"), "text kept: {xml}");
+            assert!(doc.root_name().is_some());
+        }
+
+        #[wasm_bindgen_test]
+        fn schema_set_through_vfs() {
+            const A: &str = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" \
+                 targetNamespace=\"urn:a\" xmlns=\"urn:a\">\
+                 <xs:element name=\"ea\" type=\"xs:string\"/></xs:schema>";
+            const B: &str = "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\" \
+                 targetNamespace=\"urn:b\" xmlns:b=\"urn:b\" xmlns:a=\"urn:a\">\
+                 <xs:import namespace=\"urn:a\" schemaLocation=\"set-a.xsd\"/>\
+                 <xs:element name=\"eb\"><xs:complexType><xs:sequence>\
+                 <xs:element ref=\"a:ea\"/></xs:sequence></xs:complexType>\
+                 </xs:element></xs:schema>";
+            leptris::wasmface::register_file(
+                "/virtual/set-a.xsd".to_string(),
+                A.as_bytes().to_vec(),
+            )
+            .expect("register a");
+            leptris::wasmface::register_file(
+                "/virtual/set-b.xsd".to_string(),
+                B.as_bytes().to_vec(),
+            )
+            .expect("register b");
+            let schema = leptris::wasmface::compile_xsd_set(vec![
+                "/virtual/set-b.xsd".to_string(),
+                "/virtual/set-a.xsd".to_string(),
+            ])
+            .expect("set compile through vfs");
+            let good = leptris::wasmface::WasmDocument::parse(
+                "<b:eb xmlns:b=\"urn:b\" xmlns:a=\"urn:a\"><a:ea>x</a:ea></b:eb>",
+            )
+            .unwrap();
+            assert!(
+                schema.validate_doc(&good).unwrap(),
+                "imported set validates"
+            );
+        }
+
+        #[wasm_bindgen_test]
+        fn loud_failures() {
+            // unregistered path: the face refuses before the engine runs
+            assert!(
+                leptris::wasmface::compile_xsd_set(vec!["/virtual/nope.xsd".to_string()]).is_err(),
+                "unregistered path must fail"
+            );
+            // broken schema: error-carrying-handle contract — status is
+            // authoritative, so compile raises instead of returning a
+            // degraded schema
+            assert!(leptris::wasmface::compile_xsd(
+                "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">\
+                 <xs:element name=\"x\"><xs:complexType><xs:sequence>\
+                 <xs:element ref=\"nope\"/></xs:sequence></xs:complexType>\
+                 </xs:element></xs:schema>",
+            )
+            .is_err());
+        }
     };
 }
