@@ -57,6 +57,17 @@ pub struct LeptrisXsdSchema {
 pub struct LeptrisSerializeOptions {
     _private: [u8; 0],
 }
+#[repr(C)]
+pub struct LeptrisNamespace {
+    _private: [u8; 0],
+}
+/// The capability descriptor (leptris#1905): `leptris_capabilities()`
+/// returns this by value — bits append per the engine's contract.
+#[repr(C)]
+pub struct LeptrisCapabilities {
+    pub caps: u64,
+    pub descriptor_version: u32,
+}
 
 /* Public enums (values per include/leptris/types.h and xpath.h). */
 pub type LeptrisNodeKind = c_int;
@@ -159,6 +170,41 @@ extern "C" {
     pub fn leptris_xsd_error_count(schema: *mut LeptrisXsdSchema) -> usize;
     pub fn leptris_xsd_error_at(schema: *mut LeptrisXsdSchema, i: usize) -> *const c_char;
     pub fn leptris_xsd_free(schema: *mut LeptrisXsdSchema);
+
+    /* Tier-2 wasm faces (leptris-rs#22): everything below is served
+     * by existing engine ABI — this block binds it for the wasm
+     * face. The full mirror joins the hand-maintained surface when
+     * native wrappers adopt these. */
+    pub fn leptris_element_namespace(elem: *mut LeptrisElement) -> *mut LeptrisNamespace;
+    pub fn leptris_namespace_uri(ns: *mut LeptrisNamespace) -> *const c_char;
+    pub fn leptris_element_prefix(elem: *mut LeptrisElement) -> *const c_char;
+    pub fn leptris_element_attribute_count(elem: *mut LeptrisElement) -> usize;
+    pub fn leptris_element_attributes_snapshot(
+        elem: *mut LeptrisElement,
+        names: *mut c_char,
+        names_cap: usize,
+        name_offsets: *mut usize,
+        values: *mut c_char,
+        values_cap: usize,
+        value_offsets: *mut usize,
+        ns_prefixes: *mut c_char,
+        prefixes_cap: usize,
+        prefix_offsets: *mut usize,
+        ns_uris: *mut c_char,
+        uris_cap: usize,
+        uri_offsets: *mut usize,
+    ) -> usize;
+    pub fn leptris_xsd_compile_set(
+        paths: *const *const c_char,
+        count: usize,
+        status: *mut LeptrisStatus,
+    ) -> *mut LeptrisXsdSchema;
+    pub fn leptris_parse_html_string(
+        html: *const c_char,
+        len: usize,
+        status: *mut LeptrisStatus,
+    ) -> *mut LeptrisDocument;
+    pub fn leptris_capabilities() -> LeptrisCapabilities;
 
     /* Errors */
     pub fn leptris_error_message(status: LeptrisStatus) -> *const c_char;

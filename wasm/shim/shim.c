@@ -929,29 +929,183 @@ size_t strftime(char* s, size_t max, const char* fmt, const struct tm* tm) {
 int fflush(FILE* f) { (void)f; return 0; }
 
 /* ------------------------------------------------------------------ */
-/* stdio files: unavailable — the API surface exists and fails         */
+/* stdio files: registered-path virtual filesystem                      */
+/*                                                                      */
+/* The freestanding wasm environment has no filesystem. Host callers    */
+/* (wasm-bindgen glue) inject file contents under virtual paths via     */
+/* shim_fs_register(); the stdio layer then serves reads from that      */
+/* registry, so engine APIs that take file paths (xsd compile set,      */
+/* schemaLocation imports) work inside wasm. Unregistered paths still   */
+/* fail loudly (fopen -> NULL).                                         */
 
 static int dummy_file[4];
 FILE* stdout = (FILE*)&dummy_file[0];
 FILE* stderr = (FILE*)&dummy_file[1];
 FILE* stdin = (FILE*)&dummy_file[2];
 
+typedef struct {
+    char*          path;
+    unsigned char* data;
+    size_t         len;
+} vfile_t;
+
+static vfile_t* g_vfiles = NULL;
+static size_t   g_vfile_count = 0;
+static size_t   g_vfile_cap = 0;
+
+typedef struct {
+    int    in_use;
+    int    idx;
+    size_t pos;
+} vfh_t;
+
+#define VFH_MAX 16
+static vfh_t g_vfh[VFH_MAX];
+
+/* handles are 0x1000+slot — never collide with the std{out,err,in}
+ * dummy_file pointers above */
+static FILE* vfh_handle(int slot) {
+    return (FILE*)(size_t)(0x1000u + (unsigned)slot);
+}
+static int vfh_slot(FILE* f) {
+    size_t v = (size_t)f;
+    if (v < 0x1000u || v >= 0x1000u + VFH_MAX) return -1;
+    if (!g_vfh[v - 0x1000u].in_use) return -1;
+    return (int)(v - 0x1000u);
+}
+
+int shim_fs_register(const char* path, const unsigned char* data, size_t len) {
+    if (!path || (!data && len)) return -1;
+    for (size_t i = 0; i < g_vfile_count; i++) {
+        if (strcmp(g_vfiles[i].path, path) == 0) {
+            unsigned char* nd = (unsigned char*)malloc(len ? len : 1);
+            if (!nd) return -1;
+            if (len) memcpy(nd, data, len);
+            free(g_vfiles[i].data);
+            g_vfiles[i].data = nd;
+            g_vfiles[i].len = len;
+            return 0;
+        }
+    }
+    if (g_vfile_count == g_vfile_cap) {
+        size_t nc = g_vfile_cap ? g_vfile_cap * 2 : 8;
+        vfile_t* nv = (vfile_t*)realloc(g_vfiles, nc * sizeof(vfile_t));
+        if (!nv) return -1;
+        g_vfiles = nv;
+        g_vfile_cap = nc;
+    }
+    size_t pl = strlen(path);
+    char* pd = (char*)malloc(pl + 1);
+    unsigned char* dd = (unsigned char*)malloc(len ? len : 1);
+    if (!pd || !dd) { free(pd); free(dd); return -1; }
+    memcpy(pd, path, pl + 1);
+    if (len) memcpy(dd, data, len);
+    g_vfiles[g_vfile_count].path = pd;
+    g_vfiles[g_vfile_count].data = dd;
+    g_vfiles[g_vfile_count].len = len;
+    g_vfile_count++;
+    return 0;
+}
+
+void shim_fs_clear(void) {
+    for (size_t i = 0; i < g_vfile_count; i++) {
+        free(g_vfiles[i].path);
+        free(g_vfiles[i].data);
+    }
+    free(g_vfiles);
+    g_vfiles = NULL;
+    g_vfile_count = 0;
+    g_vfile_cap = 0;
+    for (int i = 0; i < VFH_MAX; i++) g_vfh[i].in_use = 0;
+}
+
+int shim_fs_has(const char* path) {
+    if (!path) return 0;
+    for (size_t i = 0; i < g_vfile_count; i++) {
+        if (strcmp(g_vfiles[i].path, path) == 0) return 1;
+    }
+    return 0;
+}
+
 FILE* fopen(const char* path, const char* mode) {
-    (void)path; (void)mode;
+    if (!path || !mode) return NULL;
+    if (mode[0] != 'r') return NULL; /* reads only */
+    for (size_t i = 0; i < g_vfile_count; i++) {
+        if (strcmp(g_vfiles[i].path, path) == 0) {
+            for (int s = 0; s < VFH_MAX; s++) {
+                if (!g_vfh[s].in_use) {
+                    g_vfh[s].in_use = 1;
+                    g_vfh[s].idx = (int)i;
+                    g_vfh[s].pos = 0;
+                    return vfh_handle(s);
+                }
+            }
+            return NULL;
+        }
+    }
     return NULL;
 }
 size_t fread(void* p, size_t sz, size_t n, FILE* f) {
-    (void)p; (void)sz; (void)n; (void)f;
+    int s = vfh_slot(f);
+    if (s < 0 || !p || sz == 0) return 0;
+    vfh_t* h = &g_vfh[s];
+    vfile_t* vf = &g_vfiles[h->idx];
+    size_t remain = vf->len > h->pos ? vf->len - h->pos : 0;
+    size_t take = sz * n;
+    if (take > remain) take = remain;
+    size_t objs = take / sz; /* whole objects only, like stdio */
+    if (objs) memcpy(p, vf->data + h->pos, objs * sz);
+    h->pos += objs * sz;
+    return objs;
+}
+int fclose(FILE* f) {
+    int s = vfh_slot(f);
+    if (s < 0) return -1;
+    g_vfh[s].in_use = 0;
     return 0;
 }
-int fclose(FILE* f) { (void)f; return -1; }
 int fseek(FILE* f, long off, int whence) {
-    (void)f; (void)off; (void)whence;
-    return -1;
+    int s = vfh_slot(f);
+    if (s < 0) return -1;
+    vfh_t* h = &g_vfh[s];
+    size_t len = g_vfiles[h->idx].len;
+    long np;
+    switch (whence) {
+        case SEEK_SET: np = off; break;
+        case SEEK_CUR: np = (long)h->pos + off; break;
+        case SEEK_END: np = (long)len + off; break;
+        default: return -1;
+    }
+    if (np < 0 || (size_t)np > len) return -1;
+    h->pos = (size_t)np;
+    return 0;
 }
-long ftell(FILE* f) { (void)f; return -1; }
-int feof(FILE* f) { (void)f; return 1; }
-char* fgets(char* s, int n, FILE* f) { (void)s; (void)n; (void)f; return NULL; }
+long ftell(FILE* f) {
+    int s = vfh_slot(f);
+    if (s < 0) return -1;
+    return (long)g_vfh[s].pos;
+}
+int feof(FILE* f) {
+    int s = vfh_slot(f);
+    if (s < 0) return 1;
+    vfh_t* h = &g_vfh[s];
+    return h->pos >= g_vfiles[h->idx].len ? 1 : 0;
+}
+char* fgets(char* s, int n, FILE* f) {
+    int sl = vfh_slot(f);
+    if (sl < 0 || !s || n <= 0) return NULL;
+    vfh_t* h = &g_vfh[sl];
+    vfile_t* vf = &g_vfiles[h->idx];
+    if (h->pos >= vf->len) return NULL;
+    int i = 0;
+    while (i < n - 1 && h->pos < vf->len) {
+        char c = (char)vf->data[h->pos++];
+        s[i++] = c;
+        if (c == '\n') break;
+    }
+    s[i] = '\0';
+    return s;
+}
 
 /* ------------------------------------------------------------------ */
 /* time                                                                */
