@@ -11,6 +11,93 @@ use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use wasm_bindgen::prelude::*;
 
+extern "C" {
+    fn shim_fs_register(path: *const c_char, data: *const u8, len: usize) -> c_int;
+    fn shim_fs_has(path: *const c_char) -> c_int;
+    fn shim_fs_clear();
+}
+
+/// Register file contents under a virtual path so the engine's
+/// path-based APIs (xsd compile set, schemaLocation imports) can read
+/// them inside the freestanding wasm environment. Re-registering the
+/// same path replaces its contents.
+#[wasm_bindgen]
+pub fn register_file(path: String, bytes: Vec<u8>) -> Result<(), JsError> {
+    let cpath =
+        CString::new(path.as_str()).map_err(|_| JsError::new("path contains a NUL byte"))?;
+    let rc = unsafe { shim_fs_register(cpath.as_ptr(), bytes.as_ptr(), bytes.len()) };
+    if rc != 0 {
+        return Err(JsError::new("register_file failed (out of memory)"));
+    }
+    Ok(())
+}
+
+/// Drop every registered virtual file and reset any open handles.
+#[wasm_bindgen]
+pub fn clear_registered_files() {
+    unsafe { shim_fs_clear() };
+}
+
+/// One attribute row of the batched snapshot: name and value always
+/// carry; prefix/uri are undefined for no-namespace attributes.
+#[wasm_bindgen]
+pub struct WasmAttribute {
+    name: String,
+    value: String,
+    prefix: Option<String>,
+    uri: Option<String>,
+}
+
+#[wasm_bindgen]
+impl WasmAttribute {
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn value(&self) -> String {
+        self.value.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn prefix(&self) -> Option<String> {
+        self.prefix.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn uri(&self) -> Option<String> {
+        self.uri.clone()
+    }
+}
+
+/// The engine's capability descriptor (leptris#1905): the raw bitset
+/// plus the descriptor version (bits append per the engine's
+/// contract; the descriptor version gates shape changes).
+#[wasm_bindgen]
+pub struct WasmCapabilities {
+    caps: u64,
+    descriptor_version: u32,
+}
+
+#[wasm_bindgen]
+impl WasmCapabilities {
+    #[wasm_bindgen(getter)]
+    pub fn caps(&self) -> f64 {
+        self.caps as f64
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn descriptor_version(&self) -> u32 {
+        self.descriptor_version
+    }
+
+    /// Whether the engine serves the given LEPTRIS_CAP_* bit value.
+    pub fn serves(&self, bit: f64) -> bool {
+        self.caps & (bit as u64) != 0
+    }
+}
+
 /// A parsed document living in engine (wasm linear) memory.
 #[wasm_bindgen]
 pub struct WasmDocument {
@@ -34,9 +121,72 @@ impl Drop for WasmSchema {
     }
 }
 
-/// Compile an XSD schema (tier-1 subset; schema-set via one text with
-/// relative xsd:import is NOT supported in the wasm face yet — pass
-/// the head document).
+/// The engine's capability descriptor (leptris#1905): what THIS
+/// installed engine serves, as a versioned bitset. Bits append per
+/// the engine's contract; decode against the LEPTRIS_CAP_* layout of
+/// the reported descriptor version.
+#[wasm_bindgen]
+pub fn engine_capabilities() -> WasmCapabilities {
+    let raw = unsafe { ffi::leptris_capabilities() };
+    WasmCapabilities {
+        caps: raw.caps,
+        descriptor_version: raw.descriptor_version,
+    }
+}
+
+/// Compile a schema SET: every listed document's declarations merge
+/// into ONE schema (imports resolve across the set; the first
+/// document's targetNamespace is the schema's). Paths resolve
+/// relative to each document's own directory — register every file
+/// the set will touch (heads and imported members) under the exact
+/// virtual path first via register_file(); unregistered paths fail.
+#[wasm_bindgen]
+pub fn compile_xsd_set(paths: Vec<String>) -> Result<WasmSchema, JsError> {
+    if paths.is_empty() {
+        return Err(JsError::new("schema set needs at least one path"));
+    }
+    let cpaths: Vec<CString> = paths
+        .iter()
+        .map(|p| CString::new(p.as_str()))
+        .collect::<Result<_, _>>()
+        .map_err(|_| JsError::new("schema path contains a NUL byte"))?;
+    for (p, cp) in paths.iter().zip(&cpaths) {
+        if unsafe { shim_fs_has(cp.as_ptr()) } == 0 {
+            return Err(JsError::new(&format!(
+                "schema path not registered: {p} — call register_file() for every \
+                 document the set will read (heads and imported members) first"
+            )));
+        }
+    }
+    let ptrs: Vec<*const std::os::raw::c_char> = cpaths.iter().map(|p| p.as_ptr()).collect();
+    let mut st = ffi::LEPTRIS_OK;
+    let raw = unsafe { ffi::leptris_xsd_compile_set(ptrs.as_ptr(), ptrs.len(), &mut st) };
+    if raw.is_null() {
+        return Err(JsError::new(&format!(
+            "leptris xsd compile_set failed (status {st})"
+        )));
+    }
+    Ok(WasmSchema { raw })
+}
+
+/// Parse an HTML string through the engine's WHATWG-conformant HTML
+/// mode (implied head/body, void elements, case-normalized names).
+#[wasm_bindgen]
+pub fn parse_html(html: &str) -> Result<WasmDocument, JsError> {
+    let chtml = CString::new(html).map_err(|_| JsError::new("html contains a NUL byte"))?;
+    let mut st = ffi::LEPTRIS_OK;
+    let raw = unsafe { ffi::leptris_parse_html_string(chtml.as_ptr(), html.len(), &mut st) };
+    if raw.is_null() {
+        return Err(JsError::new(&format!(
+            "leptris html parse failed (status {st})"
+        )));
+    }
+    Ok(WasmDocument { raw })
+}
+
+/// Compile an XSD schema (tier-1 subset). For multi-document schemas
+/// (xsd:import / xsd:include across files) use register_file() +
+/// compile_xsd_set().
 #[wasm_bindgen]
 pub fn compile_xsd(xsd: &str) -> Result<WasmSchema, JsError> {
     let cxsd = CString::new(xsd).map_err(|_| JsError::new("xsd contains a NUL byte"))?;
@@ -282,6 +432,125 @@ impl WasmNode {
             return Err(JsError::new("leptris set_attribute failed"));
         }
         Ok(())
+    }
+
+    /// The element's namespace URI (element-kind nodes), or undefined
+    /// for a no-namespace element.
+    pub fn namespace_uri(&self) -> Option<String> {
+        unsafe {
+            let ns = ffi::leptris_element_namespace(self.node as *mut ffi::LeptrisElement);
+            if ns.is_null() {
+                return None;
+            }
+            let p = ffi::leptris_namespace_uri(ns);
+            if p.is_null() {
+                return None;
+            }
+            /* document-owned: BORROW, never free */
+            Some(CStr::from_ptr(p).to_string_lossy().into_owned())
+        }
+    }
+
+    /// The element's namespace prefix as spelled, or undefined.
+    pub fn prefix(&self) -> Option<String> {
+        unsafe {
+            let p = ffi::leptris_element_prefix(self.node as *mut ffi::LeptrisElement);
+            if p.is_null() {
+                return None;
+            }
+            Some(CStr::from_ptr(p).to_string_lossy().into_owned())
+        }
+    }
+
+    /// ALL attribute names, values, and namespace data in ONE
+    /// crossing (the engine's batched snapshot, leptris#1689): an
+    /// array of {name, value, prefix, uri} — prefix/uri undefined for
+    /// no-namespace attributes.
+    pub fn attribute_pairs(&self) -> Result<Vec<WasmAttribute>, JsError> {
+        let elem = self.node as *mut ffi::LeptrisElement;
+        let count = unsafe { ffi::leptris_element_attribute_count(elem) };
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        /* Phase 1: sizing (NULL blobs). */
+        let cap = unsafe {
+            ffi::leptris_element_attributes_snapshot(
+                elem,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+            )
+        };
+        if cap == usize::MAX {
+            return Err(JsError::new("leptris attribute snapshot sizing failed"));
+        }
+        /* Phase 2: read. One retry at the phase-1 capacity (the
+         * engine's contract for mid-call mutation). */
+        for _ in 0..2 {
+            let mut names = vec![0u8; cap];
+            let mut values = vec![0u8; cap];
+            let mut prefixes = vec![0u8; cap];
+            let mut uris = vec![0u8; cap];
+            let mut name_offsets = vec![0usize; count + 1];
+            let mut value_offsets = vec![0usize; count + 1];
+            let mut prefix_offsets = vec![0usize; count + 1];
+            let mut uri_offsets = vec![0usize; count + 1];
+            let st = unsafe {
+                ffi::leptris_element_attributes_snapshot(
+                    elem,
+                    names.as_mut_ptr() as *mut c_char,
+                    cap,
+                    name_offsets.as_mut_ptr(),
+                    values.as_mut_ptr() as *mut c_char,
+                    cap,
+                    value_offsets.as_mut_ptr(),
+                    prefixes.as_mut_ptr() as *mut c_char,
+                    cap,
+                    prefix_offsets.as_mut_ptr(),
+                    uris.as_mut_ptr() as *mut c_char,
+                    cap,
+                    uri_offsets.as_mut_ptr(),
+                )
+            };
+            if st == 0 {
+                let lane = |blob: &[u8], offsets: &[usize], i: usize| -> String {
+                    let start = offsets[i];
+                    let end = offsets[i + 1];
+                    String::from_utf8_lossy(&blob[start..end.max(start)])
+                        .trim_end_matches('\0')
+                        .to_string()
+                };
+                let mut out = Vec::with_capacity(count);
+                for i in 0..count {
+                    let no_ns = uri_offsets[i] == usize::MAX;
+                    out.push(WasmAttribute {
+                        name: lane(&names, &name_offsets, i),
+                        value: lane(&values, &value_offsets, i),
+                        prefix: if no_ns {
+                            None
+                        } else {
+                            Some(lane(&prefixes, &prefix_offsets, i))
+                        },
+                        uri: if no_ns {
+                            None
+                        } else {
+                            Some(lane(&uris, &uri_offsets, i))
+                        },
+                    });
+                }
+                return Ok(out);
+            }
+        }
+        Err(JsError::new("leptris attribute snapshot failed"))
     }
 
     /// Append an owned node (created via WasmDocument::create_* or
