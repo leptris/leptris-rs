@@ -87,3 +87,14 @@ an Ubuntu and macOS matrix.
 ## License
 
 Same license as the engine — see the LICENSE file.
+
+## Engine rides
+
+The crate links libleptris at build time; CI checks out the engine
+repository (main). The 1.6.3 ride carries libleptris 1.9.403:
+the leptris#1936 regex-family close (104 engine-wrong W3C XSD
+suite rows resolved to zero) and the leptris-rs#25-29 wave —
+empty content satisfies a fixed value (the v1.9.402 regression),
+nilled elements skip the content model, temporal enumeration
+compares by instant, `-0` is a valid nonNegativeInteger lexical,
+and whiteSpace=collapse covers every non-string builtin.
