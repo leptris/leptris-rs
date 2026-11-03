@@ -264,7 +264,30 @@ impl WasmDocument {
         let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
         let raw = unsafe { ffi::leptris_parse_string(cxml.as_ptr(), xml.len(), &mut st) };
         if raw.is_null() {
-            return Err(JsError::new(&format!("leptris parse failed (status {st})")));
+            return Err(parse_failure(st));
+        }
+        Ok(WasmDocument { raw })
+    }
+
+    /// Parse with per-call options. The engine offers: a nesting cap
+    /// (`max_depth`), strict/lenient mode, recover mode, and the
+    /// `LeptrisParseFlags` bitset. It has NO entity-expansion cap
+    /// (see [`WasmParseOptions`]).
+    pub fn parse_with_options(
+        xml: &str,
+        options: &WasmParseOptions,
+    ) -> Result<WasmDocument, JsError> {
+        let cxml = CString::new(xml).map_err(|_| JsError::new("xml contains a NUL byte"))?;
+        let opts = ffi::LeptrisParseOptions {
+            flags: options.flags as c_int,
+            strict_mode: options.strict_mode,
+            max_depth: options.max_depth as c_int,
+            recover: options.recover as c_int,
+        };
+        let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
+        let raw = unsafe { ffi::leptris_parse_string_ex(cxml.as_ptr(), xml.len(), &opts, &mut st) };
+        if raw.is_null() {
+            return Err(parse_failure(st));
         }
         Ok(WasmDocument { raw })
     }
@@ -322,6 +345,115 @@ impl WasmDocument {
             )
         }
     }
+}
+
+/// Per-call parse options (the engine's `LeptrisParseOptions`).
+///
+/// The engine has NO entity-expansion limit: DTD entities expand
+/// fully (a 10^6x nested-entity document yields a 3 MB text node;
+/// only nesting depth is capped, at 10 levels). There is therefore
+/// no `max_entity_expansion` field; adding one needs an engine
+/// change (a cap on total expanded bytes/count in the entity
+/// resolver, surfaced as a `LeptrisParseOptions` field).
+#[wasm_bindgen]
+#[derive(Clone, Copy)]
+pub struct WasmParseOptions {
+    /// 0 = engine default (256), >0 = nesting cap.
+    pub max_depth: u32,
+    /// -1 = keep thread default (recommended), 0 = lenient, 1 = strict.
+    pub strict_mode: i32,
+    /// A failed parse yields an empty document instead of an error.
+    pub recover: bool,
+    /// `LeptrisParseFlags` bitset: 1 drop whitespace-only text,
+    /// 2 DTD attribute defaults, 4 keep entity refs, 8 skip duplicate
+    /// detection, 16 skip source positions, 32 recover.
+    pub flags: u32,
+}
+
+#[wasm_bindgen]
+impl WasmParseOptions {
+    /// Engine defaults.
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> WasmParseOptions {
+        WasmParseOptions {
+            max_depth: 0,
+            strict_mode: -1,
+            recover: false,
+            flags: 0,
+        }
+    }
+}
+
+impl Default for WasmParseOptions {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The position and message of the most recent failed parse.
+#[wasm_bindgen]
+pub struct WasmParseError {
+    message: String,
+    line: u32,
+    column: u32,
+}
+
+#[wasm_bindgen]
+impl WasmParseError {
+    #[wasm_bindgen(getter)]
+    pub fn message(&self) -> String {
+        self.message.clone()
+    }
+
+    /// 1-based line (0 when the engine recorded none).
+    #[wasm_bindgen(getter)]
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// 1-based byte column (0 when the engine recorded none).
+    #[wasm_bindgen(getter)]
+    pub fn column(&self) -> u32 {
+        self.column
+    }
+}
+
+/// The engine's record of the most recent failed parse on this
+/// thread, or undefined when none was recorded. Read it right after a
+/// parse throws; a later parse overwrites it.
+#[wasm_bindgen]
+pub fn last_parse_error() -> Option<WasmParseError> {
+    unsafe {
+        let p = ffi::leptris_last_error();
+        if p.is_null() {
+            return None;
+        }
+        let (mut line, mut column): (c_int, c_int) = (0, 0);
+        ffi::leptris_last_error_position(&mut line, &mut column);
+        Some(WasmParseError {
+            message: CStr::from_ptr(p).to_string_lossy().into_owned(),
+            line: line.max(0) as u32,
+            column: column.max(0) as u32,
+        })
+    }
+}
+
+/// The message of the error thrown for a failed parse: status,
+/// engine message, and the 1-based position in a stable
+/// `(line L, column C)` suffix.
+pub(crate) fn parse_failure_message(st: ffi::LeptrisStatus) -> String {
+    match last_parse_error() {
+        Some(e) if e.line > 0 => format!(
+            "leptris parse failed (status {st}): {} (line {}, column {})",
+            e.message, e.line, e.column
+        ),
+        Some(e) => format!("leptris parse failed (status {st}): {}", e.message),
+        None => format!("leptris parse failed (status {st})"),
+    }
+}
+
+fn parse_failure(st: ffi::LeptrisStatus) -> JsError {
+    JsError::new(&parse_failure_message(st))
 }
 
 /// Take ownership of an engine-allocated C string (leptris_free_string
@@ -448,6 +580,52 @@ impl WasmNode {
             return Err(JsError::new("leptris set_attribute failed"));
         }
         Ok(())
+    }
+
+    /// Evaluate an XPath with THIS element as the context node (the
+    /// engine's `leptris_xpath_eval` context argument): `.`/`@*`/
+    /// `namespace-uri(.)` answer about the element itself in O(1)
+    /// lookups, with no document-root positional path to walk.
+    /// Returns the string-value of the result.
+    pub fn xpath(&self, expression: &str) -> Result<String, JsError> {
+        let cexpr =
+            CString::new(expression).map_err(|_| JsError::new("xpath contains a NUL byte"))?;
+        let result = unsafe {
+            ffi::leptris_xpath_eval(
+                self.doc,
+                self.node as *mut ffi::LeptrisElement,
+                cexpr.as_ptr(),
+            )
+        };
+        if result.is_null() {
+            return Err(JsError::new("leptris xpath evaluation failed"));
+        }
+        let s = unsafe { take_string(ffi::leptris_xpath_result_string(result)) };
+        unsafe { ffi::leptris_xpath_result_free(result) };
+        s.map_err(|_| JsError::new("result string materialization failed"))
+    }
+
+    /// Remove an attribute by its name as spelled (element-kind
+    /// nodes). Ok(true) removed, Ok(false) no such attribute. The
+    /// engine has no namespace-aware removal (no
+    /// `leptris_element_remove_attribute_ns`); resolve the spelled
+    /// name from `attribute_pairs()` (prefix + uri) and pass that.
+    pub fn remove_attribute(&self, name: &str) -> Result<bool, JsError> {
+        let cname =
+            CString::new(name).map_err(|_| JsError::new("attribute name contains a NUL byte"))?;
+        let st = unsafe {
+            ffi::leptris_element_remove_attribute(
+                self.node as *mut ffi::LeptrisElement,
+                cname.as_ptr(),
+            )
+        };
+        match st {
+            ffi::LEPTRIS_OK => Ok(true),
+            ffi::LEPTRIS_ERROR_NOT_FOUND => Ok(false),
+            _ => Err(JsError::new(&format!(
+                "leptris remove_attribute failed (status {st})"
+            ))),
+        }
     }
 
     /// The element's namespace URI (element-kind nodes), or undefined
@@ -724,6 +902,49 @@ impl WasmDocument {
         let node = unsafe { ffi::leptris_text_node_create(self.raw, ctext.as_ptr()) };
         if node.is_null() {
             return Err(JsError::new("leptris create_text failed"));
+        }
+        Ok(WasmNode {
+            doc: self.raw,
+            node,
+        })
+    }
+
+    /// Create a detached comment node owned by this document.
+    pub fn create_comment(&self, text: &str) -> Result<WasmNode, JsError> {
+        let ctext = CString::new(text).map_err(|_| JsError::new("comment contains a NUL byte"))?;
+        let node = unsafe { ffi::leptris_comment_node_create(self.raw, ctext.as_ptr()) };
+        if node.is_null() {
+            return Err(JsError::new("leptris create_comment failed"));
+        }
+        Ok(WasmNode {
+            doc: self.raw,
+            node,
+        })
+    }
+
+    /// Create a detached CDATA section node owned by this document.
+    pub fn create_cdata(&self, text: &str) -> Result<WasmNode, JsError> {
+        let ctext = CString::new(text).map_err(|_| JsError::new("cdata contains a NUL byte"))?;
+        let node = unsafe { ffi::leptris_cdata_node_create(self.raw, ctext.as_ptr()) };
+        if node.is_null() {
+            return Err(JsError::new("leptris create_cdata failed"));
+        }
+        Ok(WasmNode {
+            doc: self.raw,
+            node,
+        })
+    }
+
+    /// Create a detached processing-instruction node owned by this
+    /// document. `data` may be empty.
+    pub fn create_pi(&self, target: &str, data: &str) -> Result<WasmNode, JsError> {
+        let ctarget =
+            CString::new(target).map_err(|_| JsError::new("pi target contains a NUL byte"))?;
+        let cdata = CString::new(data).map_err(|_| JsError::new("pi data contains a NUL byte"))?;
+        let node =
+            unsafe { ffi::leptris_pi_node_create(self.raw, ctarget.as_ptr(), cdata.as_ptr()) };
+        if node.is_null() {
+            return Err(JsError::new("leptris create_pi failed"));
         }
         Ok(WasmNode {
             doc: self.raw,

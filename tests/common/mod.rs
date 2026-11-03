@@ -233,6 +233,87 @@ macro_rules! wasm_face_tests {
             let b3 = root.element_rows(99, 2).expect("b3");
             assert!(b3.rows().is_empty());
             assert!(b3.is_done());
+        fn create_comment_cdata_pi_and_add_child() {
+            use leptris::wasmface::{WasmDocument, WasmNodeKind};
+            let doc = WasmDocument::parse("<r/>").unwrap();
+            let root = doc.root().expect("root");
+            let c = root
+                .add_child(doc.create_comment(" note ").unwrap())
+                .unwrap();
+            let d = root.add_child(doc.create_cdata("a<b&c").unwrap()).unwrap();
+            let p = root
+                .add_child(doc.create_pi("xml-stylesheet", "href=\"s.css\"").unwrap())
+                .unwrap();
+            assert_eq!(c.kind(), WasmNodeKind::Comment);
+            assert_eq!(d.kind(), WasmNodeKind::Cdata);
+            assert_eq!(p.kind(), WasmNodeKind::Pi);
+            assert_eq!(root.children().len(), 3);
+            let xml = doc.to_xml().unwrap();
+            assert!(xml.contains("<!-- note -->"), "xml: {xml}");
+            assert!(xml.contains("<![CDATA[a<b&c]]>"), "xml: {xml}");
+            assert!(
+                xml.contains("<?xml-stylesheet href=\"s.css\"?>"),
+                "xml: {xml}"
+            );
+        }
+
+        #[wasm_bindgen_test]
+        fn remove_attribute_reports_presence() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<r a=\"1\" b=\"2\" xmlns:n=\"urn:n\" n:c=\"3\"/>",
+            )
+            .unwrap();
+            let root = doc.root().expect("root");
+            assert!(root.remove_attribute("a").unwrap());
+            assert!(!root.remove_attribute("a").unwrap(), "already gone");
+            assert!(!root.remove_attribute("nope").unwrap());
+            assert!(root.remove_attribute("n:c").unwrap(), "spelled name");
+            let names: Vec<String> = root
+                .attribute_pairs()
+                .unwrap()
+                .iter()
+                .map(|a| a.name())
+                .collect();
+            assert_eq!(names, vec!["b".to_string()]);
+            let xml = doc.to_xml().unwrap();
+            assert!(
+                !xml.contains("a=\"1\"") && !xml.contains("n:c"),
+                "xml: {xml}"
+            );
+        }
+
+        #[wasm_bindgen_test]
+        fn parse_error_carries_position() {
+            use leptris::wasmface::{last_parse_error, WasmDocument};
+            assert!(WasmDocument::parse("<r>\n <a>\n  </b></r>").is_err());
+            let e = last_parse_error().expect("engine recorded the failure");
+            assert_eq!((e.line(), e.column()), (3, 7), "{}", e.message());
+            assert!(e.message().contains("mismatch"), "{}", e.message());
+        }
+
+        #[wasm_bindgen_test]
+        fn parse_with_options_applies_max_depth() {
+            use leptris::wasmface::{WasmDocument, WasmParseOptions};
+            let deep = format!("{}{}", "<a>".repeat(20), "</a>".repeat(20));
+            assert!(WasmDocument::parse(&deep).is_ok());
+            let mut opts = WasmParseOptions::new();
+            opts.max_depth = 5;
+            assert!(WasmDocument::parse_with_options(&deep, &opts).is_err());
+            opts.max_depth = 0;
+            let doc = WasmDocument::parse_with_options("<r><x/></r>", &opts).unwrap();
+            assert_eq!(doc.xpath_count("//x").unwrap(), 1);
+        }
+
+        #[wasm_bindgen_test]
+        fn node_xpath_uses_the_element_as_context() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<r xmlns:n=\"urn:n\"><n:a x=\"1\"/><n:a x=\"2\"/><b/></r>",
+            )
+            .unwrap();
+            let kids = doc.root().expect("root").children();
+            assert_eq!(kids[1].xpath("string(@x)").unwrap(), "2");
+            assert_eq!(kids[1].xpath("namespace-uri(.)").unwrap(), "urn:n");
+            assert_eq!(kids[2].xpath("name(.)").unwrap(), "b");
         }
     };
 }

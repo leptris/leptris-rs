@@ -322,3 +322,49 @@ extern "C" {
     pub fn leptris_document_set_root(doc: *mut LeptrisDocument, elem: *mut LeptrisElement)
         -> c_int;
 }
+
+/* ---- wasm codec faces (moxml-ts#9): comment/cdata/PI creation,
+ * attribute removal, per-call parse options, parse-error position.
+ * All served by the engine's public header (src/include/leptris.h,
+ * leptris/types.h, leptris/error.h). */
+extern "C" {
+    pub fn leptris_comment_node_create(
+        doc: *mut LeptrisDocument,
+        content: *const c_char,
+    ) -> LeptrisNodeRef;
+    pub fn leptris_cdata_node_create(
+        doc: *mut LeptrisDocument,
+        content: *const c_char,
+    ) -> LeptrisNodeRef;
+    pub fn leptris_pi_node_create(
+        doc: *mut LeptrisDocument,
+        target: *const c_char,
+        data: *const c_char,
+    ) -> LeptrisNodeRef;
+    pub fn leptris_element_remove_attribute(
+        elem: *mut LeptrisElement,
+        name: *const c_char,
+    ) -> LeptrisStatus;
+    pub fn leptris_parse_string_ex(
+        xml: *const c_char,
+        length: usize,
+        options: *const LeptrisParseOptions,
+        status: *mut LeptrisStatus,
+    ) -> *mut LeptrisDocument;
+    pub fn leptris_last_error() -> *const c_char;
+    pub fn leptris_last_error_position(line: *mut c_int, column: *mut c_int);
+}
+
+/// Mirror of `LeptrisParseOptions` (leptris/types.h). `flags` is the
+/// `LeptrisParseFlags` bitset (an enum, int-sized in the C ABI).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct LeptrisParseOptions {
+    pub flags: c_int,
+    /// -1 keep thread default, 0 lenient, 1 strict W3C.
+    pub strict_mode: c_int,
+    /// 0 = engine default (256), >0 = cap.
+    pub max_depth: c_int,
+    /// Non-zero: a failed parse yields an empty document.
+    pub recover: c_int,
+}
