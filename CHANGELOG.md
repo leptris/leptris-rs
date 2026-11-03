@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ride libleptris 1.9.403 (#1936 regex close + rs#25-29 wave) by @[object]
 
+### Fixed
+
+- Stub rng_regex_supported for the 1.9.403 pattern-sweep link by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
