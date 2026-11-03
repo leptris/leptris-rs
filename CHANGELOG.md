@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Stub rng_regex_supported for the 1.9.403 pattern-sweep link by @[object]
 
+### Other
+
+- Ride engine 1.9.404 (rs#35 wave) by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
