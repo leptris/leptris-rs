@@ -289,6 +289,15 @@ int rng_regex_matches(const char* pat, const char* s) {
     return 1;
 }
 
+/* 1.9.403 rides: the XSD compile now validates pattern facets at
+ * schema-compile time (leptris#1936) through rng_regex_supported.
+ * Same permissive stub contract as matches: the wasm build's
+ * engine subset excludes /rng/, and patterned types stay valid. */
+int rng_regex_supported(const char* pat) {
+    (void)pat;
+    return 1;
+}
+
 char* getenv(const char* name) {
     (void)name;
     return NULL;
