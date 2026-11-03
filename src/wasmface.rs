@@ -716,12 +716,18 @@ impl WasmNode {
                 )
             };
             if st == 0 {
+                /* Lanes are NUL-terminated blobs. A no-namespace
+                 * attribute stores SIZE_MAX in its prefix/uri slot
+                 * (leptris.h), so offsets[i + 1] is NOT a usable end
+                 * bound: read from offsets[i] to the first NUL. */
                 let lane = |blob: &[u8], offsets: &[usize], i: usize| -> String {
                     let start = offsets[i];
-                    let end = offsets[i + 1];
-                    String::from_utf8_lossy(&blob[start..end.max(start)])
-                        .trim_end_matches('\0')
-                        .to_string()
+                    if start >= blob.len() {
+                        return String::new();
+                    }
+                    let tail = &blob[start..];
+                    let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+                    String::from_utf8_lossy(&tail[..end]).into_owned()
                 };
                 let mut out = Vec::with_capacity(count);
                 for i in 0..count {

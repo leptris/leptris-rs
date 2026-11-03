@@ -123,6 +123,50 @@ macro_rules! wasm_face_tests {
         }
 
         #[wasm_bindgen_test]
+        fn attribute_pairs_no_ns_after_namespaced() {
+            // A no-namespace attribute AFTER a namespaced one used to
+            // slice a lane to SIZE_MAX and trap (wasm `unreachable`).
+            for xml in [
+                "<a xmlns:p=\"urn:p\" p:x=\"1\" y=\"2\"/>",
+                "<a y=\"2\" xmlns:p=\"urn:p\" p:x=\"1\"/>",
+            ] {
+                let doc = leptris::wasmface::WasmDocument::parse(xml).unwrap();
+                let pairs = doc.root().expect("root").attribute_pairs().expect("pairs");
+                let x = pairs.iter().find(|a| a.name() == "p:x").expect("p:x");
+                let y = pairs.iter().find(|a| a.name() == "y").expect("y");
+                assert_eq!(x.value(), "1", "{xml}");
+                assert_eq!(x.prefix().as_deref(), Some("p"), "{xml}");
+                assert_eq!(x.uri().as_deref(), Some("urn:p"), "{xml}");
+                assert_eq!(y.value(), "2", "{xml}");
+                assert_eq!(y.prefix(), None, "{xml}");
+                assert_eq!(y.uri(), None, "{xml}");
+            }
+        }
+
+        #[wasm_bindgen_test]
+        fn attribute_pairs_mixed_three() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<a xmlns:p=\"urn:p\" xmlns:q=\"urn:q\" p:x=\"1\" y=\"2\" q:z=\"3\"/>",
+            )
+            .unwrap();
+            let pairs = doc.root().expect("root").attribute_pairs().expect("pairs");
+            let got: Vec<_> = pairs
+                .iter()
+                .filter(|a| !a.name().starts_with("xmlns"))
+                .map(|a| (a.name(), a.value(), a.prefix(), a.uri()))
+                .collect();
+            let s = |v: &str| Some(v.to_string());
+            assert_eq!(
+                got,
+                vec![
+                    ("p:x".to_string(), "1".to_string(), s("p"), s("urn:p")),
+                    ("y".to_string(), "2".to_string(), None, None),
+                    ("q:z".to_string(), "3".to_string(), s("q"), s("urn:q")),
+                ]
+            );
+        }
+
+        #[wasm_bindgen_test]
         fn capabilities_describe_engine() {
             let caps = leptris::wasmface::engine_capabilities();
             assert!(caps.caps() > 0.0, "engine advertises bits");
