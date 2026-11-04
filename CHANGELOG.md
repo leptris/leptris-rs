@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ride engine 1.9.404 (rs#35 wave) by @[object]
 
+### Other
+
+- Ride engine 1.9.406 by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
