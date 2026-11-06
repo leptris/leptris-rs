@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "leptris"
-version = "1.6.11"
+version = "1.6.12"
 dependencies = [
  "cc",
  "leptris-descriptor",
