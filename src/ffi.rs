@@ -179,6 +179,9 @@ extern "C" {
     pub fn leptris_element_namespace(elem: *mut LeptrisElement) -> *mut LeptrisNamespace;
     pub fn leptris_namespace_uri(ns: *mut LeptrisNamespace) -> *const c_char;
     pub fn leptris_element_prefix(elem: *mut LeptrisElement) -> *const c_char;
+    pub fn leptris_element_attribute(
+        elem: *mut LeptrisElement, name: *const c_char,
+    ) -> *const c_char;
     pub fn leptris_element_attribute_count(elem: *mut LeptrisElement) -> usize;
     pub fn leptris_element_attributes_snapshot(
         elem: *mut LeptrisElement,
