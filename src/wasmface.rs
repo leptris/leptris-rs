@@ -872,7 +872,11 @@ impl WasmNode {
         rows: &mut Vec<WasmElementRow>,
         done: &mut bool,
     ) {
-        /* stateless pre-order: skip `cursor` elements, take `budget` */
+        /* stateless pre-order: skip `cursor` elements, take `budget`.
+         * When the budget fills, the walk CONTINUES in look-ahead
+         * mode: `done` stays false only if a further element
+         * actually exists (an exact-fit batch reports done=true —
+         * the next call yields an empty done batch). */
         let mut stack = vec![(self.clone(), 0usize)];
         let mut remaining = budget;
         while let Some((node, depth)) = stack.pop() {
@@ -895,11 +899,10 @@ impl WasmNode {
                         attrs,
                     });
                     remaining -= 1;
-                    if remaining == 0 {
-                        /* more elements may follow */
-                        *done = false;
-                        return;
-                    }
+                } else {
+                    /* budget spent; a further element exists */
+                    *done = false;
+                    return;
                 }
             }
             let kids = node.children();
