@@ -192,5 +192,48 @@ macro_rules! wasm_face_tests {
             )
             .is_err());
         }
+
+        #[wasm_bindgen_test]
+        fn attribute_single_read() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<root id=\"r1\" w:val=\"7\" xmlns:w=\"u\"/>",
+            )
+            .expect("parse");
+            let root = doc.root().expect("root");
+            assert_eq!(root.attribute("id").as_deref(), Some("r1"));
+            assert_eq!(root.attribute("w:val").as_deref(), Some("7"));
+            assert_eq!(root.attribute("absent"), None);
+        }
+
+        #[wasm_bindgen_test]
+        fn element_rows_preorder_batches_and_resume() {
+            let doc = leptris::wasmface::WasmDocument::parse(
+                "<a id=\"top\"><b><c/></b><d>text</d></a>",
+            )
+            .expect("parse");
+            let root = doc.root().expect("root");
+            // whole subtree in one budget
+            let all = root.element_rows(0, 10).expect("batch");
+            assert!(all.is_done());
+            assert_eq!(all.rows().len(), 4); // a, b, c, d
+            assert_eq!(all.rows()[0].name(), "a");
+            assert_eq!(all.rows()[0].depth(), 0);
+            assert_eq!(all.rows()[0].attrs().len(), 1);
+            assert_eq!(all.rows()[0].attrs()[0].name(), "id");
+            assert_eq!(all.rows()[3].name(), "d");
+            assert_eq!(all.rows()[3].text(), "text");
+            // budgeted: first batch of 2, resume, exhaust
+            let b1 = root.element_rows(0, 2).expect("b1");
+            assert_eq!(b1.rows().len(), 2);
+            assert!(!b1.is_done());
+            assert_eq!(b1.next_cursor(), 2);
+            let b2 = root.element_rows(b1.next_cursor(), 2).expect("b2");
+            assert_eq!(b2.rows().len(), 2);
+            assert!(b2.is_done());
+            // a cursor past the end is an empty done batch
+            let b3 = root.element_rows(99, 2).expect("b3");
+            assert!(b3.rows().is_empty());
+            assert!(b3.is_done());
+        }
     };
 }

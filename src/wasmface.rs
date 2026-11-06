@@ -41,6 +41,7 @@ pub fn clear_registered_files() {
 /// One attribute row of the batched snapshot: name and value always
 /// carry; prefix/uri are undefined for no-namespace attributes.
 #[wasm_bindgen]
+#[derive(Clone)]
 pub struct WasmAttribute {
     name: String,
     value: String,
@@ -739,5 +740,173 @@ impl WasmDocument {
             return Err(JsError::new("leptris set_root failed"));
         }
         Ok(())
+    }
+}
+
+/* ---- #22 slice 2: the data-plane faces ----------------------------
+ * Bulk-first rule (moxml-rs#2): cross the boundary once per batch,
+ * never per node. `element_rows` walks the subtree RUST-SIDE and
+ * returns pre-order element rows in ONE crossing; the cursor is
+ * stateless (the caller re-walks skipping `next_cursor` elements),
+ * so a budgeted traversal never holds engine-side state. */
+
+/// One pre-order element row. Row contract (pinned by the
+/// conformance fixtures, not just the answers): elements only,
+/// document pre-order, `depth` 0 = the walked root; `text` is the
+/// element's concatenated text ("" when none); `attrs` carries every
+/// attribute's {name, value, prefix, uri} in document order.
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct WasmElementRow {
+    depth: usize,
+    name: String,
+    prefix: Option<String>,
+    uri: Option<String>,
+    text: String,
+    attrs: Vec<WasmAttribute>,
+}
+
+#[wasm_bindgen]
+impl WasmElementRow {
+    #[wasm_bindgen(getter)]
+    pub fn depth(&self) -> usize {
+        self.depth
+    }
+    #[wasm_bindgen(getter)]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn prefix(&self) -> Option<String> {
+        self.prefix.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn uri(&self) -> Option<String> {
+        self.uri.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn text(&self) -> String {
+        self.text.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn attrs(&self) -> Vec<WasmAttribute> {
+        self.attrs.clone()
+    }
+}
+
+/// One budgeted batch: the rows, the cursor to resume from, and
+/// whether the subtree is exhausted.
+#[wasm_bindgen]
+#[derive(Clone)]
+pub struct WasmRowsBatch {
+    rows: Vec<WasmElementRow>,
+    next_cursor: usize,
+    done: bool,
+}
+
+#[wasm_bindgen]
+impl WasmRowsBatch {
+    #[wasm_bindgen(getter)]
+    pub fn rows(&self) -> Vec<WasmElementRow> {
+        self.rows.clone()
+    }
+    #[wasm_bindgen(getter)]
+    pub fn next_cursor(&self) -> usize {
+        self.next_cursor
+    }
+    #[wasm_bindgen(getter)]
+    pub fn is_done(&self) -> bool {
+        self.done
+    }
+}
+
+impl WasmNode {
+    /// Single attribute read (element-kind nodes). Convenience
+    /// accessor over the engine's borrow — batched reads go through
+    /// `attribute_pairs` / `element_rows` per the data-plane rule.
+    pub fn attribute(&self, name: &str) -> Option<String> {
+        let cname =
+            CString::new(name).ok()?;
+        unsafe {
+            let p = ffi::leptris_element_attribute(
+                self.node as *mut ffi::LeptrisElement,
+                cname.as_ptr(),
+            );
+            if p.is_null() {
+                return None;
+            }
+            /* document-owned: BORROW, never free */
+            Some(CStr::from_ptr(p).to_string_lossy().into_owned())
+        }
+    }
+
+    /// Pre-order element rows for the subtree, resuming at
+    /// `cursor`, collecting at most `budget` rows — ONE boundary
+    /// crossing per batch. `cursor` 0 starts at this node; the
+    /// batch's `next_cursor` feeds the next call until `is_done`.
+    pub fn element_rows(
+        &self,
+        cursor: usize,
+        budget: usize,
+    ) -> Result<WasmRowsBatch, JsError> {
+        if budget == 0 {
+            return Err(JsError::new("budget must be > 0"));
+        }
+        let mut skipped = 0usize;
+        let mut rows = Vec::new();
+        let mut done = true;
+        self.collect_rows(cursor, budget, &mut skipped, &mut rows, &mut done);
+        let next_cursor = cursor + rows.len();
+        Ok(WasmRowsBatch {
+            rows,
+            next_cursor,
+            done,
+        })
+    }
+
+    fn collect_rows(
+        &self,
+        cursor: usize,
+        budget: usize,
+        skipped: &mut usize,
+        rows: &mut Vec<WasmElementRow>,
+        done: &mut bool,
+    ) {
+        /* stateless pre-order: skip `cursor` elements, take `budget` */
+        let mut stack = vec![(self.clone(), 0usize)];
+        let mut remaining = budget;
+        while let Some((node, depth)) = stack.pop() {
+            if node.kind() == WasmNodeKind::Element {
+                if *skipped < cursor {
+                    *skipped += 1;
+                } else if remaining > 0 {
+                    let name = node.name().unwrap_or_default();
+                    let prefix = node.prefix();
+                    let uri = node.namespace_uri();
+                    let text = node.text().unwrap_or_default();
+                    let attrs =
+                        node.attribute_pairs().unwrap_or_default();
+                    rows.push(WasmElementRow {
+                        depth,
+                        name,
+                        prefix,
+                        uri,
+                        text,
+                        attrs,
+                    });
+                    remaining -= 1;
+                    if remaining == 0 {
+                        /* more elements may follow */
+                        *done = false;
+                        return;
+                    }
+                }
+            }
+            let kids = node.children();
+            for kid in kids.iter().rev() {
+                stack.push((kid.clone(), depth + 1));
+            }
+        }
+        *done = true;
     }
 }
