@@ -279,7 +279,7 @@ impl WasmDocument {
     ) -> Result<WasmDocument, JsError> {
         let cxml = CString::new(xml).map_err(|_| JsError::new("xml contains a NUL byte"))?;
         let opts = ffi::LeptrisParseOptions {
-            flags: options.flags as c_int,
+            flags: crate::guards::checked_flags(options.flags).map_err(|m| JsError::new(&m))?,
             strict_mode: options.strict_mode,
             max_depth: crate::guards::checked_max_depth(options.max_depth)
                 .map_err(|m| JsError::new(&m))?,
@@ -366,7 +366,8 @@ pub struct WasmParseOptions {
     pub strict_mode: i32,
     /// A failed parse yields an empty document instead of an error.
     pub recover: bool,
-    /// `LeptrisParseFlags` bitset: 1 drop whitespace-only text,
+    /// `LeptrisParseFlags` bitset (values above `i32::MAX` are refused,
+    /// no wraparound): 1 drop whitespace-only text,
     /// 2 DTD attribute defaults, 4 keep entity refs, 8 skip duplicate
     /// detection, 16 skip source positions, 32 recover.
     pub flags: u32,
