@@ -281,7 +281,8 @@ impl WasmDocument {
         let opts = ffi::LeptrisParseOptions {
             flags: options.flags as c_int,
             strict_mode: options.strict_mode,
-            max_depth: options.max_depth as c_int,
+            max_depth: crate::guards::checked_max_depth(options.max_depth)
+                .map_err(|m| JsError::new(&m))?,
             recover: options.recover as c_int,
         };
         let mut st: ffi::LeptrisStatus = ffi::LEPTRIS_OK;
@@ -358,7 +359,8 @@ impl WasmDocument {
 #[wasm_bindgen]
 #[derive(Clone, Copy)]
 pub struct WasmParseOptions {
-    /// 0 = engine default (256), >0 = nesting cap.
+    /// 0 = engine default (256), >0 = nesting cap. Values above
+    /// `i32::MAX` are refused by `parse_with_options` (no wraparound).
     pub max_depth: u32,
     /// -1 = keep thread default (recommended), 0 = lenient, 1 = strict.
     pub strict_mode: i32,
@@ -720,30 +722,24 @@ impl WasmNode {
                  * attribute stores SIZE_MAX in its prefix/uri slot
                  * (leptris.h), so offsets[i + 1] is NOT a usable end
                  * bound: read from offsets[i] to the first NUL. */
-                let lane = |blob: &[u8], offsets: &[usize], i: usize| -> String {
-                    let start = offsets[i];
-                    if start >= blob.len() {
-                        return String::new();
-                    }
-                    let tail = &blob[start..];
-                    let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
-                    String::from_utf8_lossy(&tail[..end]).into_owned()
+                let lane = |blob: &[u8], offsets: &[usize], i: usize| -> Result<String, JsError> {
+                    crate::guards::lane_str(blob, offsets[i]).map_err(|m| JsError::new(&m))
                 };
                 let mut out = Vec::with_capacity(count);
                 for i in 0..count {
                     let no_ns = uri_offsets[i] == usize::MAX;
                     out.push(WasmAttribute {
-                        name: lane(&names, &name_offsets, i),
-                        value: lane(&values, &value_offsets, i),
+                        name: lane(&names, &name_offsets, i)?,
+                        value: lane(&values, &value_offsets, i)?,
                         prefix: if no_ns {
                             None
                         } else {
-                            Some(lane(&prefixes, &prefix_offsets, i))
+                            Some(lane(&prefixes, &prefix_offsets, i)?)
                         },
                         uri: if no_ns {
                             None
                         } else {
-                            Some(lane(&uris, &uri_offsets, i))
+                            Some(lane(&uris, &uri_offsets, i)?)
                         },
                     });
                 }

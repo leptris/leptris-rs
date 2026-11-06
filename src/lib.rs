@@ -18,6 +18,9 @@
 
 mod ffi;
 
+#[cfg(any(test, all(target_arch = "wasm32", feature = "wasm")))]
+mod guards;
+
 // #1900: the wasm-bindgen face (wasm32 + `wasm` feature only —
 // native targets keep the dynamic-link Document API).
 #[cfg(all(target_arch = "wasm32", feature = "wasm"))]
