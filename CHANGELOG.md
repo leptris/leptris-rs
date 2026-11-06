@@ -21,6 +21,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ride engine 1.9.406 by @[object]
 
+### Added
+
+- Attribute(name) + the element_rows data-plane face (#22 slice 2) by @[object]
+
+### Fixed
+
+- An exact-fit element_rows batch reports done=true by @[object]
+
+### Other
+
+- Ride engine 1.9.411 by @[object]
+- Cargo fmt by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
