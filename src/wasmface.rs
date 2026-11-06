@@ -825,8 +825,7 @@ impl WasmNode {
     /// accessor over the engine's borrow — batched reads go through
     /// `attribute_pairs` / `element_rows` per the data-plane rule.
     pub fn attribute(&self, name: &str) -> Option<String> {
-        let cname =
-            CString::new(name).ok()?;
+        let cname = CString::new(name).ok()?;
         unsafe {
             let p = ffi::leptris_element_attribute(
                 self.node as *mut ffi::LeptrisElement,
@@ -844,11 +843,7 @@ impl WasmNode {
     /// `cursor`, collecting at most `budget` rows — ONE boundary
     /// crossing per batch. `cursor` 0 starts at this node; the
     /// batch's `next_cursor` feeds the next call until `is_done`.
-    pub fn element_rows(
-        &self,
-        cursor: usize,
-        budget: usize,
-    ) -> Result<WasmRowsBatch, JsError> {
+    pub fn element_rows(&self, cursor: usize, budget: usize) -> Result<WasmRowsBatch, JsError> {
         if budget == 0 {
             return Err(JsError::new("budget must be > 0"));
         }
@@ -888,8 +883,7 @@ impl WasmNode {
                     let prefix = node.prefix();
                     let uri = node.namespace_uri();
                     let text = node.text().unwrap_or_default();
-                    let attrs =
-                        node.attribute_pairs().unwrap_or_default();
+                    let attrs = node.attribute_pairs().unwrap_or_default();
                     rows.push(WasmElementRow {
                         depth,
                         name,

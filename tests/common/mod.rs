@@ -207,10 +207,9 @@ macro_rules! wasm_face_tests {
 
         #[wasm_bindgen_test]
         fn element_rows_preorder_batches_and_resume() {
-            let doc = leptris::wasmface::WasmDocument::parse(
-                "<a id=\"top\"><b><c/></b><d>text</d></a>",
-            )
-            .expect("parse");
+            let doc =
+                leptris::wasmface::WasmDocument::parse("<a id=\"top\"><b><c/></b><d>text</d></a>")
+                    .expect("parse");
             let root = doc.root().expect("root");
             // whole subtree in one budget
             let all = root.element_rows(0, 10).expect("batch");
