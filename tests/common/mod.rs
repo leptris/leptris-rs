@@ -277,6 +277,9 @@ macro_rules! wasm_face_tests {
             let b3 = root.element_rows(99, 2).expect("b3");
             assert!(b3.rows().is_empty());
             assert!(b3.is_done());
+        }
+
+        #[wasm_bindgen_test]
         fn create_comment_cdata_pi_and_add_child() {
             use leptris::wasmface::{WasmDocument, WasmNodeKind};
             let doc = WasmDocument::parse("<r/>").unwrap();
