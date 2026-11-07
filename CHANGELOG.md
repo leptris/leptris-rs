@@ -21,6 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ride engine 1.9.406 by @[object]
 
+### Added
+
+- Comment/cdata/PI creation, remove_attribute, parse options, parse-error position, node-context xpath by @[object]
+
+### Fixed
+
+- Refuse oversized max_depth and invalid UTF-8 attribute data by @[object]
+- Attribute_pairs read lanes to NUL, not next offset by @[object]
+
+### Other
+
+- Restore the element_rows pin's closing brace in the rebase seam by @[object]
+- Refuse wrapping parse flags and out-of-range snapshot offsets by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
