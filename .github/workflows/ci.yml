@@ -85,7 +85,7 @@ jobs:
       # that CDN edge path 504-poisoned every attempt on 2026-11-08
       # (four consecutive runs died parsing the 504 HTML as JSON)
       # while the rest of GitHub stayed healthy. Install from
-      # crates.io instead: same tool, no releases-download依赖.
+      # crates.io instead: same tool, free of the releases-download path.
       - name: Install wasm-pack from crates.io
         run: cargo install wasm-pack --locked
       - name: wasm-pack test (node; engine compiled in via cc)
@@ -114,7 +114,7 @@ jobs:
       # that CDN edge path 504-poisoned every attempt on 2026-11-08
       # (four consecutive runs died parsing the 504 HTML as JSON)
       # while the rest of GitHub stayed healthy. Install from
-      # crates.io instead: same tool, no releases-download依赖.
+      # crates.io instead: same tool, free of the releases-download path.
       - name: Install wasm-pack from crates.io
         run: cargo install wasm-pack --locked
       - uses: nanasess/setup-chromedriver@v2
