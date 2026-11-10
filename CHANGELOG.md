@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Ride engine 1.9.406 by @[object]
 
+### Added
+
+- Serialize options (expand-empty) + c14n faces for the conformance tiers by @[object]
+
+### Other
+
+- Bump the crate to 1.6.18 by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
