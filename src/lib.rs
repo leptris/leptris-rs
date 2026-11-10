@@ -206,6 +206,85 @@ impl Document {
     }
 }
 
+/// Serialize with options: indent, declaration, and the
+/// expand-empty knob (leptris#882 — `<a></a>` instead of `<a/>`,
+/// the shape the moxml conformance dataset pins).
+///
+/// The ext struct is size-aware (leptris#644): every field defaults
+/// to zero, so only the knobs the caller sets ride through.
+pub fn serialize_with_options(
+    doc: &Document,
+    indent: i32,
+    xml_declaration: bool,
+    expand_empty: bool,
+) -> Result<String> {
+    let encoding = b"UTF-8\0";
+    let options = ffi::LeptrisSerializeOptionsFull {
+        indent: indent as std::os::raw::c_int,
+        xml_declaration: xml_declaration as std::os::raw::c_int,
+        encoding: encoding.as_ptr() as *const c_char,
+    };
+    let ext = ffi::LeptrisSerializeExtOptions {
+        indent_text: 0,
+        indent_unit: std::ptr::null(),
+        expand_empty: expand_empty as std::os::raw::c_int,
+        html_method: 0,
+        indent_html: 0,
+    };
+    let raw = unsafe {
+        ffi::leptris_document_serialize_ext_sized(
+            doc.raw,
+            &options,
+            &ext,
+            std::mem::size_of::<ffi::LeptrisSerializeExtOptions>(),
+        )
+    };
+    if raw.is_null() {
+        return Err(Error::Unknown(0));
+    }
+    let s = unsafe {
+        let s = CStr::from_ptr(raw).to_string_lossy().into_owned();
+        ffi::leptris_free_string(raw);
+        s
+    };
+    Ok(s)
+}
+
+/// Canonical XML version for [`c14n_canonicalize`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum C14NVersion {
+    /// Canonical XML 1.0.
+    V10,
+    /// Canonical XML 1.1.
+    V11,
+}
+
+/// Canonicalize the document (C14N 1.0/1.1, comments stripped): the
+/// engine's canonical form — sorted attributes, long-form empties,
+/// expanded references — the shape the moxml conformance dataset's
+/// c14n family pins.
+pub fn c14n_canonicalize(doc: &Document, version: C14NVersion) -> Result<String> {
+    let raw = unsafe {
+        ffi::leptris_c14n_canonicalize(
+            doc.raw,
+            match version {
+                C14NVersion::V10 => 0,
+                C14NVersion::V11 => 1,
+            },
+            0,
+        )
+    };
+    if raw.is_null() {
+        return Err(Error::Unknown(0));
+    }
+    let s = unsafe {
+        let s = CStr::from_ptr(raw).to_string_lossy().into_owned();
+        ffi::leptris_free_string(raw);
+        s
+    };
+    Ok(s)
+}
+
 impl Drop for Document {
     fn drop(&mut self) {
         unsafe { ffi::leptris_document_free(self.raw) };
@@ -627,5 +706,26 @@ pub mod sax {
         } else {
             Err(super::Error::Parse)
         }
+    }
+}
+
+#[cfg(test)]
+mod serialize_c14n_tests {
+    use super::*;
+
+    #[test]
+    fn serialize_with_options_expands_empty_elements() {
+        let doc = Document::parse(b"<r><a/></r>").expect("parses");
+        let compact = serialize_with_options(&doc, 0, false, false).expect("compact");
+        assert_eq!(compact, "<r><a/></r>");
+        let expanded = serialize_with_options(&doc, 0, false, true).expect("expands");
+        assert_eq!(expanded, "<r><a></a></r>");
+    }
+
+    #[test]
+    fn c14n_canonicalizes_with_sorted_attributes_and_long_empties() {
+        let doc = Document::parse(b"<r b=\"2\" a=\"1\"><a/></r>").expect("parses");
+        let canonical = c14n_canonicalize(&doc, C14NVersion::V10).expect("c14n");
+        assert_eq!(canonical, "<r a=\"1\" b=\"2\"><a></a></r>");
     }
 }

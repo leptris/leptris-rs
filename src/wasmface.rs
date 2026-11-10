@@ -1131,3 +1131,33 @@ impl WasmNode {
         *done = true;
     }
 }
+
+/// Serialize with options (the serialization family's shape knobs):
+/// indent (0 = compact) and expand-empty (`<a></a>` instead of
+/// `<a/>` — the moxml dataset's committed long form).
+#[wasm_bindgen]
+pub fn serialize_with_options(
+    xml: &str,
+    indent: i32,
+    expand_empty: bool,
+) -> Result<String, JsError> {
+    let doc = crate::Document::parse(xml.as_bytes())?;
+    crate::serialize_with_options(&doc, indent, false, expand_empty)
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Canonicalize (C14N 1.0/1.1, comments stripped) — the engine's
+/// canonical form, the shape the moxml dataset's c14n family pins.
+#[wasm_bindgen]
+pub fn c14n_canonicalize(xml: &str, version_1_1: bool) -> Result<String, JsError> {
+    let doc = crate::Document::parse(xml.as_bytes())?;
+    crate::c14n_canonicalize(
+        &doc,
+        if version_1_1 {
+            crate::C14NVersion::V11
+        } else {
+            crate::C14NVersion::V10
+        },
+    )
+    .map_err(|e| JsError::new(&e.to_string()))
+}

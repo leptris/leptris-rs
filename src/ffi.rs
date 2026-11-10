@@ -57,6 +57,26 @@ pub struct LeptrisXsdSchema {
 pub struct LeptrisSerializeOptions {
     _private: [u8; 0],
 }
+/// The frozen serialize options, TRANSPARENT (leptris/types.h
+/// LeptrisSerializeOptions — the ABI is size-pinned in the header).
+/// The opaque sibling above stays for the null-default callers.
+#[repr(C)]
+pub struct LeptrisSerializeOptionsFull {
+    pub indent: c_int,
+    pub xml_declaration: c_int,
+    pub encoding: *const c_char,
+}
+/// The post-1.9.x serialization extensions (leptris/types.h
+/// LeptrisSerializeExtOptions — rides the size-aware entry; the
+/// header struct may grow, callers pass their compile-time size).
+#[repr(C)]
+pub struct LeptrisSerializeExtOptions {
+    pub indent_text: c_int,
+    pub indent_unit: *const c_char,
+    pub expand_empty: c_int,
+    pub html_method: c_int,
+    pub indent_html: c_int,
+}
 #[repr(C)]
 pub struct LeptrisNamespace {
     _private: [u8; 0],
@@ -158,6 +178,17 @@ extern "C" {
     pub fn leptris_xpath_result_string(result: *mut LeptrisXPathResult) -> *mut c_char;
     pub fn leptris_xpath_result_free(result: *mut LeptrisXPathResult);
     pub fn leptris_free_string(s: *mut c_char);
+    pub fn leptris_document_serialize_ext_sized(
+        doc: *mut LeptrisDocument,
+        options: *const LeptrisSerializeOptionsFull,
+        ext: *const LeptrisSerializeExtOptions,
+        ext_size: usize,
+    ) -> *mut c_char;
+    pub fn leptris_c14n_canonicalize(
+        doc: *mut LeptrisDocument,
+        version: c_int,
+        flags: c_int,
+    ) -> *mut c_char;
 
     /* XSD (leptris#1900 wasm face; the full mirror lives in the
      * hand-maintained surface above once native wrappers adopt it). */
