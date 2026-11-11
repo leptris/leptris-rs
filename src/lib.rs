@@ -728,4 +728,25 @@ mod serialize_c14n_tests {
         let canonical = c14n_canonicalize(&doc, C14NVersion::V10).expect("c14n");
         assert_eq!(canonical, "<r a=\"1\" b=\"2\"><a></a></r>");
     }
+
+    /// Conformance dataset rows (schema 5, serialization + c14n
+    /// families): character references inside attribute values must
+    /// round-trip as re-escaped numeric references, and the canonical
+    /// form must be byte-identical. Both regressed ONLY in the wasm32
+    /// freestanding build while this file passed natively — the shim's
+    /// *printf returned 0, so the engine's `out += sprintf(...)`
+    /// emitters never advanced and the next write ate the escape.
+    #[test]
+    fn attr_charref_whitespace_round_trips_through_serialize() {
+        let doc = Document::parse(br#"<r a="x&#10;y"/>"#).expect("parses");
+        let out = serialize_with_options(&doc, 0, false, true).expect("serializes");
+        assert_eq!(out, r#"<r a="x&#10;y"></r>"#);
+    }
+
+    #[test]
+    fn c14n_matches_the_dataset_bytes() {
+        let doc = Document::parse(br#"<r a="1" b="2"><x>  t </x></r>"#).expect("parses");
+        let canonical = c14n_canonicalize(&doc, C14NVersion::V10).expect("c14n");
+        assert_eq!(canonical, r#"<r a="1" b="2"><x>  t </x></r>"#);
+    }
 }
