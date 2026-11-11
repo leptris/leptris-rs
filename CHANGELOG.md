@@ -29,6 +29,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Bump the crate to 1.6.18 by @[object]
 
+### Fixed
+
+- *printf returns the emitted character count by @[object]
+
+### Other
+
+- Bump the crate to 1.6.19 by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
