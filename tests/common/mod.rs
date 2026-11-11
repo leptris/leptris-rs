@@ -362,5 +362,27 @@ macro_rules! wasm_face_tests {
             assert_eq!(kids[1].xpath("namespace-uri(.)").unwrap(), "urn:n");
             assert_eq!(kids[2].xpath("name(.)").unwrap(), "b");
         }
+
+        /// Conformance dataset rows (moxml schema 5): charref
+        /// whitespace in attribute values round-trips re-escaped, and
+        /// c14n is byte-identical to the native build. Both regressed
+        /// when the shim's *printf returned 0 — the engine's
+        /// `out += sprintf(...)` emitters never advanced, so the next
+        /// write ate the escape. Native-only tests cannot catch this:
+        /// the shim only compiles under wasm32.
+        #[wasm_bindgen_test]
+        fn serialize_options_keep_attr_charref_whitespace() {
+            let out =
+                leptris::wasmface::serialize_with_options(r#"<r a="x&#10;y"/>"#, 0, true).unwrap();
+            assert_eq!(out, r#"<r a="x&#10;y"></r>"#, "serialize: {out}");
+        }
+
+        #[wasm_bindgen_test]
+        fn c14n_matches_the_native_bytes() {
+            let canonical =
+                leptris::wasmface::c14n_canonicalize(r#"<r a="1" b="2"><x>  t </x></r>"#, false)
+                    .unwrap();
+            assert_eq!(canonical, r#"<r a="1" b="2"><x>  t </x></r>"#);
+        }
     };
 }

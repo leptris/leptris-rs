@@ -581,10 +581,17 @@ struct outbuf {
     char* p;
     size_t left;
     int overflow;
+    /* Total characters emitted, including those dropped on overflow —
+     * ISO C's *printf returns the would-be length, and the engine
+     * advances its output pointer by sprintf's return (e.g. the
+     * attribute emitter's `out += sprintf(out, "&#10;")`; a 0 return
+     * made the next write eat the escape). */
+    size_t count;
 };
 
 static void ob_putc(struct outbuf* ob, char c) {
     wdt();
+    ob->count++;
     if (ob->left > 1) { *ob->p++ = c; ob->left--; }
     else if (ob->left == 1) { *ob->p = '\0'; ob->left = 0; ob->overflow = 1; }
 }
@@ -812,6 +819,7 @@ static int vsnprintf_core(char* out, size_t n, const char* fmt,
     ob.p = out;
     ob.left = n ? n : 1;
     ob.overflow = 0;
+    ob.count = 0;
     if (n) *out = '\0';
     const char* f = fmt;
     while (*f) {
@@ -822,7 +830,7 @@ static int vsnprintf_core(char* out, size_t n, const char* fmt,
         if (format_one(&ob, &f, &ap) < 0) break;
     }
     if (!ob.overflow && n) *ob.p = '\0';
-    return 0;
+    return (int)ob.count;
 }
 
 int vsnprintf(char* out, size_t n, const char* fmt, va_list ap) {
