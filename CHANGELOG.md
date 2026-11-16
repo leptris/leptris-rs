@@ -41,6 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The content reads serve every served kind (moxml-ts#7) by @[object]
 
+### Fixed
+
+- The content reads serve every served kind (moxml-ts#7) by @[object]
+
+### Other
+
+- Release v1.6.20 by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
