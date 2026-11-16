@@ -129,6 +129,10 @@ extern "C" {
     pub fn leptris_element_name(elem: *mut LeptrisElement) -> *const c_char;
     pub fn leptris_element_text(elem: *mut LeptrisElement) -> *const c_char;
     pub fn leptris_text_node_get_content(node: LeptrisNodeRef) -> *mut c_char;
+    pub fn leptris_comment_node_get_content(node: LeptrisNodeRef) -> *const c_char;
+    pub fn leptris_cdata_node_get_content(node: LeptrisNodeRef) -> *const c_char;
+    pub fn leptris_pi_node_get_target(node: LeptrisNodeRef) -> *const c_char;
+    pub fn leptris_pi_node_get_data(node: LeptrisNodeRef) -> *const c_char;
     pub fn leptris_element_child_count(elem: *mut LeptrisElement) -> usize;
     pub fn leptris_element_first_child(
         elem: *mut LeptrisElement,
