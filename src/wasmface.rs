@@ -523,8 +523,27 @@ impl WasmNode {
         unsafe {
             let p = match self.kind() {
                 WasmNodeKind::Text => ffi::leptris_text_node_get_content(self.node),
+                WasmNodeKind::Comment => ffi::leptris_comment_node_get_content(self.node),
+                WasmNodeKind::Cdata => ffi::leptris_cdata_node_get_content(self.node),
+                WasmNodeKind::Pi => ffi::leptris_pi_node_get_data(self.node),
                 _ => ffi::leptris_element_text(self.node as *mut ffi::LeptrisElement),
             };
+            if p.is_null() {
+                return None;
+            }
+            Some(CStr::from_ptr(p).to_string_lossy().into_owned())
+        }
+    }
+
+    /// The PI target (PI-kind nodes; None otherwise). The data rides
+    /// text() — the DOM bridge builds createProcessingInstruction
+    /// (target, data) from the pair.
+    pub fn pi_target(&self) -> Option<String> {
+        if self.kind() != WasmNodeKind::Pi {
+            return None;
+        }
+        unsafe {
+            let p = ffi::leptris_pi_node_get_target(self.node);
             if p.is_null() {
                 return None;
             }
