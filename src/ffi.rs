@@ -312,6 +312,7 @@ pub type LeptrisNodeRef = *mut LeptrisNode;
 extern "C" {
     pub fn leptris_node_get_type(node: LeptrisNodeRef) -> c_int;
     pub fn leptris_node_unlink(node: LeptrisNodeRef) -> LeptrisStatus;
+    pub fn leptris_node_parent(node: LeptrisNodeRef) -> *mut LeptrisElement;
     pub fn leptris_element_insert_before(
         sibling: *mut LeptrisElement,
         new_node: *mut LeptrisElement,
