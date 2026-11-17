@@ -62,6 +62,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The parent face (the live-face siblings ride it) by @[object]
 
+### Added
+
+- The parent face (the live-face siblings ride it) by @[object]
+
+### Other
+
+- Release v1.9.0 by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
