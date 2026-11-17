@@ -552,6 +552,15 @@ impl WasmNode {
     }
 
     /// Engine node kind.
+    /// The node's identity token: stable for the document's
+    /// lifetime (mutation re-links, never re-allocates), unique per
+    /// node within one document. The live-face wrappers key their
+    /// identity maps on this — one JS wrapper per node, no matter
+    /// which face minted the handle.
+    pub fn identity(&self) -> u32 {
+        self.node as u32
+    }
+
     pub fn kind(&self) -> WasmNodeKind {
         match unsafe { ffi::leptris_node_get_type(self.node) } {
             0 => WasmNodeKind::Element,
@@ -769,6 +778,17 @@ impl WasmNode {
         Err(JsError::new("leptris attribute snapshot failed"))
     }
 
+    /// Detach THIS node from its parent (the live-face removeChild).
+    /// The node survives — owned by its document — but no longer has
+    /// a parent; the caller keeps the handle to re-attach elsewhere.
+    pub fn remove(&self) -> Result<(), JsError> {
+        let st = unsafe { ffi::leptris_node_unlink(self.node) };
+        if st != ffi::LEPTRIS_OK {
+            return Err(JsError::new("leptris unlink failed"));
+        }
+        Ok(())
+    }
+
     /// Append an owned node (created via WasmDocument::create_* or
     /// moved from another parent of the SAME document). Returns the
     /// installed handle.
@@ -882,6 +902,12 @@ impl WasmDocument {
                 nodes,
             })
         }
+    }
+
+    /// The document's identity token (the live-face wrappers scope
+    /// their maps per document and refuse cross-document adoptions).
+    pub fn identity(&self) -> u32 {
+        self.raw as u32
     }
 
     /// The root element as a node handle.
