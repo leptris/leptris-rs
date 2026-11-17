@@ -778,6 +778,19 @@ impl WasmNode {
         Err(JsError::new("leptris attribute snapshot failed"))
     }
 
+    /// The parent element as a handle (None at the root, and for
+    /// detached nodes). The live-face siblings ride it.
+    pub fn parent(&self) -> Option<WasmNode> {
+        let parent = unsafe { ffi::leptris_node_parent(self.node) };
+        if parent.is_null() {
+            return None;
+        }
+        Some(WasmNode {
+            doc: self.doc,
+            node: parent as ffi::LeptrisNodeRef,
+        })
+    }
+
     /// Detach THIS node from its parent (the live-face removeChild).
     /// The node survives — owned by its document — but no longer has
     /// a parent; the caller keeps the handle to re-attach elsewhere.
