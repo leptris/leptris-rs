@@ -49,6 +49,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Gitignore the engine checkout (the wasm build's vendored source) by @[object]
 
+### Fixed
+
+- Export the tier-2 budgeted-read faces by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
