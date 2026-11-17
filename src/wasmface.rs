@@ -789,6 +789,33 @@ impl WasmNode {
         Ok(())
     }
 
+    /// Detach every child (the live-face textContent setter's
+    /// clear step). The children survive, detached.
+    pub fn clear_children(&self) -> Result<(), JsError> {
+        let st =
+            unsafe { ffi::leptris_element_remove_children(self.node as *mut ffi::LeptrisElement) };
+        if st != ffi::LEPTRIS_OK {
+            return Err(JsError::new("leptris remove_children failed"));
+        }
+        Ok(())
+    }
+
+    /// Insert `new_node` immediately before this element (the
+    /// live-face insertBefore). Both elements stay in the SAME
+    /// document.
+    pub fn insert_before(&self, new_node: &WasmNode) -> Result<(), JsError> {
+        let st = unsafe {
+            ffi::leptris_element_insert_before(
+                self.node as *mut ffi::LeptrisElement,
+                new_node.node as *mut ffi::LeptrisElement,
+            )
+        };
+        if st != ffi::LEPTRIS_OK {
+            return Err(JsError::new("leptris insert_before failed"));
+        }
+        Ok(())
+    }
+
     /// Append an owned node (created via WasmDocument::create_* or
     /// moved from another parent of the SAME document). Returns the
     /// installed handle.
