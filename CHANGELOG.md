@@ -49,6 +49,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Gitignore the engine checkout (the wasm build's vendored source) by @[object]
 
+### Added
+
+- The batched tree reads — element_rows + node_table (the data plane on the engine tier) by @[object]
+
+### Other
+
+- Release v1.7.0 by @[object]
+- Gitignore the engine checkout (the wasm build's vendored source) by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
