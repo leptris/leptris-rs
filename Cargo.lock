@@ -85,7 +85,7 @@ dependencies = [
 
 [[package]]
 name = "leptris"
-version = "1.6.20"
+version = "1.7.0"
 dependencies = [
  "cc",
  "js-sys",
