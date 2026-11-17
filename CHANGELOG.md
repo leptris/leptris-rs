@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The live-mutation faces — insert_before/after + clear_children by @[object]
 - The node identity token + the detach face (the live-face foundations, moxml-ts#7 stage 2) by @[object]
 
+### Added
+
+- The parent face (the live-face siblings ride it) by @[object]
+
 ## [1.6.2] - 2026-11-02
 
 ### Added
