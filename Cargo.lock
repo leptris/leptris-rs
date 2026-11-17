@@ -88,6 +88,7 @@ name = "leptris"
 version = "1.6.20"
 dependencies = [
  "cc",
+ "js-sys",
  "leptris-descriptor",
  "wasm-bindgen",
  "wasm-bindgen-test",
