@@ -1180,3 +1180,167 @@ pub fn c14n_canonicalize(xml: &str, version_1_1: bool) -> Result<String, JsError
     )
     .map_err(|e| JsError::new(&e.to_string()))
 }
+
+// ---- the batched tree reads (the data plane on the engine tier) ------
+
+fn push_pairs(arr: &js_sys::Array, pairs: &[WasmAttribute]) {
+    let flat = js_sys::Array::new();
+    for attr in pairs {
+        // The snapshot's name is already qualified (prefix:local).
+        flat.push(&JsValue::from(attr.name.clone()));
+        flat.push(&JsValue::from(attr.value.clone()));
+    }
+    arr.push(&flat);
+}
+
+fn element_row_js(
+    ordinal: u32,
+    parent: Option<u32>,
+    depth: u32,
+    name: &str,
+    ns: Option<&str>,
+    pairs: &[WasmAttribute],
+    text: &str,
+) -> JsValue {
+    let arr = js_sys::Array::new();
+    arr.push(&JsValue::from(ordinal));
+    arr.push(&match parent {
+        Some(p) => JsValue::from(p),
+        None => JsValue::NULL,
+    });
+    arr.push(&JsValue::from(depth));
+    arr.push(&JsValue::from(name));
+    arr.push(&match ns {
+        Some(uri) => JsValue::from(uri),
+        None => JsValue::NULL,
+    });
+    push_pairs(&arr, pairs);
+    arr.push(&JsValue::from(text));
+    arr.into()
+}
+
+struct WalkRow {
+    ordinal: u32,
+    parent: Option<u32>,
+    depth: u32,
+    name: String,
+    ns: Option<String>,
+    pairs: Vec<WasmAttribute>,
+    text: String,
+}
+
+fn walk_element_rows(node: &WasmNode, parent: Option<u32>, depth: u32, rows: &mut Vec<WalkRow>) {
+    let local = node.name().unwrap_or_default();
+    let name = match node.prefix() {
+        Some(p) => format!("{}:{}", p, local),
+        None => local,
+    };
+    let ns = node.namespace_uri();
+    let pairs = node.attribute_pairs().unwrap_or_default();
+    // The contract's text column: the element's DIRECT character-data
+    // children only (Text + CData) — `leptris_element_text` answers the
+    // deep subtree text, which is a different face.
+    let mut text = String::new();
+    for child in node.children() {
+        match child.kind() {
+            WasmNodeKind::Text | WasmNodeKind::Cdata => {
+                text.push_str(&child.text().unwrap_or_default());
+            }
+            _ => {}
+        }
+    }
+    let ordinal = rows.len() as u32;
+    rows.push(WalkRow {
+        ordinal,
+        parent,
+        depth,
+        name,
+        ns,
+        pairs,
+        text,
+    });
+    for child in node.children() {
+        if child.kind() == WasmNodeKind::Element {
+            walk_element_rows(&child, Some(ordinal), depth + 1, rows);
+        }
+    }
+}
+
+fn node_table_entry(id: u32, parent: Option<u32>, node: &WasmNode) -> JsValue {
+    let arr = js_sys::Array::new();
+    arr.push(&JsValue::from(id));
+    arr.push(&JsValue::from(node.kind() as u32));
+    arr.push(&match parent {
+        Some(p) => JsValue::from(p),
+        None => JsValue::NULL,
+    });
+    match node.kind() {
+        WasmNodeKind::Element => {
+            arr.push(&JsValue::from(node.name().unwrap_or_default()));
+            arr.push(&JsValue::NULL);
+            push_pairs(&arr, &node.attribute_pairs().unwrap_or_default());
+        }
+        WasmNodeKind::Pi => {
+            arr.push(&JsValue::from(node.pi_target().unwrap_or_default()));
+            arr.push(&JsValue::from(node.text().unwrap_or_default()));
+            arr.push(&JsValue::NULL);
+        }
+        _ => {
+            arr.push(&JsValue::NULL);
+            arr.push(&JsValue::from(node.text().unwrap_or_default()));
+            arr.push(&JsValue::NULL);
+        }
+    }
+    arr.into()
+}
+
+fn walk_node_table(node: &WasmNode, parent: Option<u32>, table: &mut Vec<JsValue>) {
+    let id = table.len() as u32;
+    table.push(node_table_entry(id, parent, node));
+    for child in node.children() {
+        walk_node_table(&child, Some(id), table);
+    }
+}
+
+#[wasm_bindgen]
+impl WasmDocument {
+    /// The batched element-rows read (the processing model's row
+    /// contract, § The data plane): the whole tree as rows in ONE
+    /// crossing — [ordinal, parent, depth, qualified_name,
+    /// namespace_uri, attr_pairs_flat, text], document order. The
+    /// walk runs Rust-side over the engine's batched children +
+    /// attribute-snapshot faces; the boundary is crossed once.
+    pub fn element_rows(&self) -> Result<Vec<JsValue>, JsError> {
+        let mut rows: Vec<WalkRow> = Vec::new();
+        if let Some(root) = self.root() {
+            walk_element_rows(&root, None, 0, &mut rows);
+        }
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                element_row_js(
+                    row.ordinal,
+                    row.parent,
+                    row.depth,
+                    &row.name,
+                    row.ns.as_deref(),
+                    &row.pairs,
+                    &row.text,
+                )
+            })
+            .collect())
+    }
+
+    /// The full node table for tree-shape consumers (the DOM
+    /// bridge): every served node in document order, ONE crossing —
+    /// [id, kind, parent, name_or_null, text_or_null, attr_pairs]
+    /// where the name column carries the PI target for PI nodes and
+    /// attr_pairs is present on elements only.
+    pub fn node_table(&self) -> Result<Vec<JsValue>, JsError> {
+        let mut table: Vec<JsValue> = Vec::new();
+        if let Some(root) = self.root() {
+            walk_node_table(&root, None, &mut table);
+        }
+        Ok(table)
+    }
+}
