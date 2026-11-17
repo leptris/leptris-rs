@@ -1063,6 +1063,12 @@ impl WasmRowsBatch {
     }
 }
 
+/// The budgeted-read faces never left this plain impl block: written
+/// with the tier-2 batch (the ask's `attribute(name)` +
+/// `element_rows(cursor, budget)`), they were not wasm-exported and
+/// so never reached the JS tier. Exported now - the data-plane doc's
+/// `visit(doc, ..., budget)` shape is this cursor walk.
+#[wasm_bindgen]
 impl WasmNode {
     /// Single attribute read (element-kind nodes). Convenience
     /// accessor over the engine's borrow — batched reads go through
